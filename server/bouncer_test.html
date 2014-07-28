@@ -1,0 +1,119 @@
+<doctype html>
+<html><head>
+<title>Bouncer test</title>
+<style>
+button {
+  font: 18px sans-serif;
+  padding: 8px;
+}
+textarea {
+  font-family: monospace;
+  margin: 2px;
+  width: 480px;
+  height: 120px;
+}
+#left { position: absolute; left: 0; top: 0; width: 50%; }
+#right { position: absolute; right: 0; top: 0; width: 50%; }
+ 
+</style>
+</head>
+<body>
+<div id="left">
+<br>
+<h2>Client 1</h2>
+<textarea id="client1Input" rows="5" cols="15" disabled="true"></textarea><br>
+<button id="client1Connect" onclick="connect('client1')">Connect</button>
+<button id="client1Send" onclick="sendData('client1')" disabled="true">Send Data</button>
+<button id="client1Disconnect" onclick="disconnect('client1')" disabled="true">Disconnect
+</button>
+<textarea id="client1Output" rows="5" cols="15" disabled="true"></textarea><br>
+<br>
+<h2>Client 2</h2>
+<textarea id="client2Input" rows="5" cols="15" disabled="true"></textarea><br>
+<button id="client2Connect" onclick="connect('client2')">Connect</button>
+<button id="client2Send" onclick="sendData('client2')" disabled="true">Send Data</button>
+<button id="client2Disconnect" onclick="disconnect('client2')" disabled="true">Disconnect
+</button>
+<textarea id="client2Output" rows="5" cols="15" disabled="true"></textarea><br>
+<br>
+</div>
+<div id="right">
+<br>
+<h2>Owner</h2>
+<textarea id="ownerInput" rows="5" cols="15" disabled="true">
+{"cmd": "message", "to": "client1", "msg": "only for client 1"}
+</textarea><br>
+<button id="ownerConnect" onclick="connect('owner')">Connect</button>
+<button id="ownerSend" onclick="sendData('owner')" disabled="true">Send Data</button>
+<button id="ownerDisconnect" onclick="disconnect('owner')" disabled="true">Disconnect
+</button>
+<textarea id="ownerOutput" rows="5" cols="15" disabled="true"></textarea><br>
+</div>
+<script>
+
+var websockets = {};
+
+function makeUrl(endpoint) {
+  var url = 'ws://localhost:8083/bounce/owner';
+	if (endpoint != 'owner') {
+		url = url + '/' + endpoint;
+	}
+	return url;
+}
+
+function connect(endpoint) {
+	console.log('connect(' + endpoint + ')');
+	var connectButton = document.getElementById(endpoint + 'Connect');
+  connectButton.disabled = true;
+  var url = makeUrl(endpoint);
+	websockets[endpoint] = new WebSocket(url);
+	websockets[endpoint].onopen = function(event) {
+		console.log('onopen(' + endpoint + ')');
+		var sendButton = document.getElementById(endpoint + 'Send');
+		sendButton.disabled = false;
+		var inputArea = document.getElementById(endpoint + 'Input');
+		inputArea.disabled = false;
+	}
+	websockets[endpoint].onmessage = function(event) {
+		console.log('onmessage(' + endpoint + ', ' + event.data + ')');
+		var outputArea = document.getElementById(endpoint + 'Output');
+		outputArea.value = outputArea.value + '\n' + event.data;
+	}
+	var disconnectButton = document.getElementById(endpoint + 'Disconnect');
+	disconnectButton.disabled = false;
+	websockets[endpoint].onclose = function(event) {
+		console.log('onclose(' + endpoint + ')');
+		if (endpoint in websockets) {
+			console.log('Disconnecting in onclose()');
+			disconnect(endpoint);
+		}
+	}
+}
+
+function sendData(endpoint) {
+	var inputArea = document.getElementById(endpoint + 'Input');
+	console.log('sendData(' + endpoint + ', ' + inputArea.value + ')');
+	websockets[endpoint].send(inputArea.value);
+}
+
+function disconnect(endpoint) {
+	console.log('disconnect(' + endpoint + ')');
+	websockets[endpoint].close()
+
+	var connectButton = document.getElementById(endpoint + 'Connect');
+	connectButton.disabled = false;
+
+	var sendButton = document.getElementById(endpoint + 'Send');
+	sendButton.disabled = true;
+
+	var disconnectButton = document.getElementById(endpoint + 'Disconnect');
+	disconnectButton.disabled = true;
+
+	delete websockets[endpoint];
+
+	var inputArea = document.getElementById(endpoint + 'Input');
+	inputArea.disabled = true;
+}
+
+</script>
+</body></html>
