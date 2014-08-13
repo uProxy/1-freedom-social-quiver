@@ -18,29 +18,30 @@
  * - no reliability
  * @class QuiverSocialProvider
  * @constructor
- * @param {Function} dispatchEvent callback to signal events
- * @param {WebSocket} webSocket Alternative webSocket implementation for tests
+ * @param {function(string, Object=)} dispatchEvent callback to signal events
+ * @param {FreedomWebSocket=} opt_webSocket Alternative webSocket implementation for tests
+ * @implements {SocialProviderInterface}
  */
-function QuiverSocialProvider(dispatchEvent, webSocket) {
+function QuiverSocialProvider(dispatchEvent, opt_webSocket) {
   this.dispatchEvent = dispatchEvent;
   this.storage = freedom['core.storage']();
   this.view = freedom['core.view']();
-  this.websocket = freedom["core.websocket"] || webSocket;
+  this.websocket = freedom["core.websocket"] || opt_webSocket;
   this.social = freedom.social();
 
   /** @private {string} */
   this.clientSuffix_ = String(Math.random());
 
-  /** @private {!Object.<string, QuiverSocialProvider.clientTracker_>} */
+  /** @private {!Object.<string, !Object.<string, QuiverSocialProvider.clientTracker_>>} */
   this.clients_ = {};  // userId, clientSuffix => clientTracker
 
-  /** @private {!Object.<string, !WebSocket>} */
+  /** @private {!Object.<string, !FreedomWebSocket>} */
   this.ownerConnections_ = {};  // server => WebSocket
 
-  /** @private {!Object.<string, !Object.<string, !WebSocket>>} */
+  /** @private {!Object.<string, !Object.<string, !FreedomWebSocket>>} */
   this.clientConnections_ = {};  // userId, server => WebSocket
 
-  /** @private {QuiverSocialProvider.configuration_} */
+  /** @private {?QuiverSocialProvider.configuration_} */
   this.configuration_ = null;
 }
 
@@ -100,6 +101,10 @@ QuiverSocialProvider.makeDefaultConfiguration_ = function() {
   };
 };
 
+/**
+ * @param {function()} continuation
+ * @private
+ */
 QuiverSocialProvider.prototype.syncConfiguration_ = function(continuation) {
   if (this.configuration_) {
     this.storage.set('config', JSON.stringify(this.configuration_)).then(continuation);
@@ -145,21 +150,27 @@ QuiverSocialProvider.prototype.getClientId_ = function() {
   return this.configuration_.self.id + ':' + this.clientSuffix_;
 };
 
+/** @override */
+QuiverSocialProvider.prototype.clearCachedCredentials = function() {
+  // TODO(bemasc): What does this even mean?
+};
+
 /**
  * Connect to the Web Socket rendezvous server
  * e.g. social.login(Object options)
  * The only login option needed is 'agent', used to determine which group to join in the server
  *
- * @method login
- * @param {Object} loginOptions
- * @param {function(Object, Object=)} continuation First argument is an onStatus event, send is an optional error message.
- * @return {Object} status - Same schema as 'onStatus' events
- **/
+ * @override
+ */
 QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
   // Wrap the continuation so that it will only be called once by
   // onmessage in the case of success.
   var finishLogin = {
     continuation: continuation,
+    /**
+     * @param {!Object|undefined} msg
+     * @param {Object=} err
+     */
     finish: function(msg, err) {
       if (this.continuation) {
         this.continuation(msg, err);
@@ -203,7 +214,7 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
 };
 
 QuiverSocialProvider.prototype.sendAllRosterChanged_ = function() {
-  this.changeRoster(this.configuration_.self.id, null);
+  this.changeRoster(/** @type {string} */ (this.configuration_.self.id), null);
 
   for (var userId in this.clients_) {
     this.changeRoster(userId, null);
@@ -364,7 +375,7 @@ QuiverSocialProvider.prototype.setNick_ = function(nick) {
 
 /** @private */
 QuiverSocialProvider.prototype.selfDescriptionChanged_ = function() {
-  this.changeRoster(this.configuration_.self.id);
+  this.changeRoster(/** @type {string} */ (this.configuration_.self.id));
   for (var userId in this.clientConnections_) {
     for (var serverUrl in this.clientConnections_[userId]) {
       var introMsg = this.makeIntroMsg_(this.configuration_.friends[userId]);
@@ -459,14 +470,8 @@ QuiverSocialProvider.prototype.addServer_ = function(serverUrl) {
 /**
  * Returns all the <user_profile>s that we've seen so far (from 'onUserProfile' events)
  *
- * @method getUsers
- * @return {Object} { 
- *    'userId1': <user_profile>,
- *    'userId2': <user_profile>,
- *     ...
- * } List of <user_profile>s indexed by userId
- *   On failure, rejects with an error code (see above)
- **/
+ * @override
+ */
 QuiverSocialProvider.prototype.getUsers = function(continuation) {
   if (!this.configuration_) {
     continuation(undefined, this.err("OFFLINE"));
@@ -478,6 +483,10 @@ QuiverSocialProvider.prototype.getUsers = function(continuation) {
     profiles[userId] = this.makeProfile_(userId);
   }
   var myUserId = this.configuration_.self.id;
+  if (!myUserId) {
+    continuation(undefined, this.err("OFFLINE"));
+    return;
+  }
   profiles[myUserId] = this.makeProfile_(myUserId);
   continuation(profiles);
 };
@@ -528,14 +537,9 @@ QuiverSocialProvider.prototype.makeClientState_ = function(userId, clientSuffix)
  * NOTE: This does not guarantee to be entire roster, just clients we're currently aware of at the moment
  * e.g. social.getClients()
  * 
- * @method getClients
- * @return {Object} { 
- *    'clientId1': <client_state>,
- *    'clientId2': <client_state>,
- *     ...
- * } List of <client_state>s indexed by clientId
+ * @override
  *   On failure, rejects with an error code (see above)
- **/
+ */
 QuiverSocialProvider.prototype.getClients = function(continuation) {
   if (!this.configuration_) {
     continuation(undefined, this.err("OFFLINE"));
@@ -558,13 +562,8 @@ QuiverSocialProvider.prototype.getClients = function(continuation) {
  * Note: userId and clientId are the same for this.websocket
  * e.g. sendMessage(String destination_id, String message)
  * 
- * @method sendMessage
- * @param {String} to Either the target clientId, or a userId to reach all of
- *     that user's clients.
- * @param {String} msg The message to send
- * @param {function} continuation Function to call once the message is sent
- *     (not necessarily received).
- **/
+ * @override
+ */
 QuiverSocialProvider.prototype.sendMessage = function(to, msg, continuation) {
   if (!this.configuration_) {
     // This can happen if sendMessage is called right after login without waiting
@@ -621,13 +620,12 @@ QuiverSocialProvider.prototype.sendMessage = function(to, msg, continuation) {
 };
 
 /**
-   * Disconnects from the Web Socket server
-   * e.g. logout(Object options)
-   * No options needed
-   * 
-   * @method logout
-   * @return {Object} status - same schema as 'onStatus' events
-   **/
+ * Disconnects from the Web Socket server
+ * e.g. logout(Object options)
+ * No options needed
+ * 
+ * @override
+ */
 QuiverSocialProvider.prototype.logout = function(continuation) {
   if (QuiverSocialProvider.isEmpty_(this.ownerConnections_)) { // We may not have been logged in
     continuation(undefined, this.err("OFFLINE"));
@@ -659,9 +657,8 @@ QuiverSocialProvider.prototype.logout = function(continuation) {
  *
  * @method changeRoster
  * @private
- * @param {String} userId
- * @param {?String=} clientSuffix Optional.
- * @return {Object} - same schema as 'onStatus' event
+ * @param {string} userId
+ * @param {?string=} clientSuffix Optional.
  **/
 QuiverSocialProvider.prototype.changeRoster = function(userId, clientSuffix) {
   var userProfile = this.makeProfile_(userId);
@@ -687,13 +684,13 @@ QuiverSocialProvider.prototype.changeRoster = function(userId, clientSuffix) {
  *
  * @method onMessage
  * @private
- * @param {function} gotMsg Function to call upon receipt of a message
- * @param {String} msg Message from the server (see server/bouncer.py for schema)
+ * @param {function()} gotMsg Function to call upon receipt of a message
+ * @param {!Object} msg Message from the server (see server/bouncer.py for schema)
  * @return nothing
  **/
 QuiverSocialProvider.prototype.onMessage = function(gotMsg, msg) {
   gotMsg();
-  msg = JSON.parse(msg.text);
+  msg = /** @type {!Object} */ (JSON.parse(msg.text));
 
   // If state information from the server
   // Store my own ID and all known users at the time
@@ -702,11 +699,11 @@ QuiverSocialProvider.prototype.onMessage = function(gotMsg, msg) {
     // to support recovering from asymmetric contact loss.
   // If directed message, emit event
   } else if (msg.cmd === 'message') {
-    this.onEndpointMessage(msg.from, JSON.parse(msg.msg));
-  // Roster change event
-  } else if (msg.cmd === 'roster') {
-    // Ignore for now.  We can handle roster changes using websocket.onClose.
+    this.onEndpointMessage(msg.from, /** @type {!Object} */ (JSON.parse(msg.msg)));
   }
+
+  // Ignore msg.cmd === 'roster' for now.
+  // We can handle roster changes using websocket.onClose.
 };
 
 /**
@@ -717,9 +714,8 @@ QuiverSocialProvider.prototype.onMessage = function(gotMsg, msg) {
  *
  * @method onEndpointMessage
  * @private
- * @param {function} gotMsg Function to call upon receipt of a message
- * @param {String} msg Message from the client (see .sendMessage and .makeIntroMsg_)
- * @return nothing
+ * @param {string} fromUserId The user who sent this message.
+ * @param {!Object} msg Message from the client (see .sendMessage and .makeIntroMsg_)
  **/
 QuiverSocialProvider.prototype.onEndpointMessage = function(fromUserId, msg) {
   if (msg.cmd === 'msg') {

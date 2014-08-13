@@ -90,6 +90,25 @@ module.exports = function (grunt) {
         }
       }
     },
+    closureCompiler: {
+      options: {
+        compilerFile: 'closure/compiler.jar',
+        checkModified: false,
+        compilerOpts: {
+           compilation_level: 'SIMPLE_OPTIMIZATIONS', // 'ADVANCED_OPTIMIZATIONS',
+           externs: ['externs/*.js'],
+           warning_level: 'verbose',
+           jscomp_off: ['fileoverviewTags'], //'checkTypes', 
+           summary_detail_level: 3,
+        },
+        d32: true, // will use 'java -client -d32 -jar compiler.jar'
+        TieredCompilation: false // will use 'java -server -XX:+TieredCompilation -jar compiler.jar'
+      },
+      mainTarget: {
+        src: 'src/social.quiver.js', // FILES.src,
+        dest: 'closure/output.js'
+      }
+    },
     clean: [],
     connect: {
       default: {
@@ -116,6 +135,7 @@ module.exports = function (grunt) {
   grunt.loadNpmTasks('grunt-contrib-connect');
   grunt.loadNpmTasks('grunt-contrib-jshint');
   grunt.loadNpmTasks('grunt-contrib-yuidoc');
+  grunt.loadNpmTasks('grunt-closure-tools');
   grunt.loadNpmTasks('grunt-karma');
   
   // Default tasks.
