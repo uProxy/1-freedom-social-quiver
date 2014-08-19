@@ -15,4 +15,4 @@ describe("social.quiver.json", function() {
   });
 });
 
-describe("integration: social.quiver.json", SOCIAL_SINGLE_INTEGRATION_SPEC.bind(this, "/src/social.quiver.json"));
+describe("integration: social.quiver.json", INTEGRATIONTEST.social.single.bind(this, "/src/social.quiver.json"));
