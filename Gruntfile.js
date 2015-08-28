@@ -101,11 +101,11 @@ module.exports = function (grunt) {
            jscomp_off: ['fileoverviewTags'], //'checkTypes', 
            summary_detail_level: 3,
         },
-        d32: true, // will use 'java -client -d32 -jar compiler.jar'
+        d32: false, // true will use 'java -client -d32 -jar compiler.jar'
         TieredCompilation: false // will use 'java -server -XX:+TieredCompilation -jar compiler.jar'
       },
       mainTarget: {
-        src: 'src/social.quiver.js', // FILES.src,
+        src: 'src/social2.quiver.js', // FILES.src,
         dest: 'closure/output.js'
       }
     },
