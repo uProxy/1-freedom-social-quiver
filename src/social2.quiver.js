@@ -26,7 +26,6 @@ function QuiverSocialProvider(dispatchEvent, opt_webSocket) {
   this.dispatchEvent = dispatchEvent;
   this.storage = freedom['core.storage']();
   this.websocket = freedom["core.websocket"] || opt_webSocket;
-  this.social = freedom.social();
 
   /** @private {string} */
   this.clientSuffix_ = String(Math.random());
@@ -47,7 +46,7 @@ function QuiverSocialProvider(dispatchEvent, opt_webSocket) {
 // TODO: Replace this localhost server with a public host.  Using a
 // localhost server prevents you from talking to anyone.
 /** @const @private {!Array.<string>} */
-QuiverSocialProvider.DEFAULT_SERVERS_ = ['ws://localhost:8083/bounce/'];
+QuiverSocialProvider.DEFAULT_SERVERS_ = ['ws://quiver.bemasc.net:8083/bounce/'];
 
 /** @const @private {number} */
 QuiverSocialProvider.MAX_CONNECTIONS_ = 5;
@@ -162,15 +161,6 @@ QuiverSocialProvider.prototype.clearCachedCredentials = function() {
  * @override
  */
 QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
-  // TODO: remove this terrible version JSON hack copied from the "email" provider
-  console.log('login called with version ' + loginOpts.version);
-  try {
-    var versionObj = JSON.parse(loginOpts.version);
-    this.setNick_(versionObj.userId);
-  } catch(e) {
-    console.log('failed to parse version object');  // TODO: remove
-  }
-
   // Wrap the continuation so that it will only be called once by
   // onmessage in the case of success.
   var finishLogin = {
@@ -200,6 +190,15 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
   this.syncConfiguration_(function() {
     this.clients_[this.configuration_.self.id] = {};
     this.clients_[this.configuration_.self.id][this.clientSuffix_] = QuiverSocialProvider.makeClientTracker_();
+
+    // TODO: remove this terrible version JSON hack copied from the "email" provider
+    console.log('login called with version ' + loginOpts.version);
+    try {
+      var versionObj = JSON.parse(loginOpts.version);
+      this.setNick_(versionObj.userId);
+    } catch(e) {
+      console.log('failed to parse version object');  // TODO: remove
+    }
 
     for (var i = 0; i < this.configuration_.self.servers.length; ++i) {
       var myServer = this.configuration_.self.servers[i];
@@ -248,7 +247,7 @@ QuiverSocialProvider.prototype.connectAsOwner = function(serverUrl, continuation
   conn.on("onMessage", this.onMessage.bind(this, continuation));
   conn.on("onError", function (cont, error) {
     delete this.ownerConnections_[serverUrl];
-    continuation(undefined, this.err('ERR_CONNECTION'));
+    console.log('Failed to connect as client to ' + serverUrl);
   }.bind(this, continuation));
   conn.on("onClose", function (cont, msg) {
     delete this.ownerConnections_[serverUrl];
@@ -293,7 +292,7 @@ QuiverSocialProvider.prototype.connectAsClient = function(serverUrl, friend) {
   // conn.on("onMessage", this.onMessage.bind(this, continuation));
   conn.on("onError", function (cont, error) {
     delete connections[serverUrl];
-    conn.finish(undefined, this.err('ERR_CONNECTION'));
+    cont(undefined, this.err('ERR_CONNECTION'));
   }.bind(this, continuation));
   conn.on("onClose", function (cont, msg) {
     delete connections[serverUrl];
@@ -325,6 +324,7 @@ QuiverSocialProvider.prototype.makeIntroMsg_ = function(friend) {
 
 /**
  * @param {string} ignoredUserId
+ * @param {function({networkData:string;})} cb
  */
 QuiverSocialProvider.prototype.inviteUser = function(ignoredUserId, cb) {
   // TODO: Show my initially userId alongside the remote nick? Show pending
@@ -363,9 +363,10 @@ QuiverSocialProvider.prototype.selfDescriptionChanged_ = function() {
 
 /**
  * @param {string} friendUrl
+ * @param {Function} cb
  * @private
  */
-QuiverSocialProvider.prototype.acceptUserInvitation = function(friendUrl) {
+QuiverSocialProvider.prototype.acceptUserInvitation = function(friendUrl, cb) {
   var splitIndex = friendUrl.lastIndexOf(':');
   if (splitIndex === -1) {
     // No friend, just a server URL?
@@ -382,6 +383,7 @@ QuiverSocialProvider.prototype.acceptUserInvitation = function(friendUrl) {
   var userId = contact.slice(splitPathIndex + 1);
 
   this.addFriend_([serverUrl], userId, [knockCode], null);
+  cb();
 };
 
 /**
@@ -392,6 +394,7 @@ QuiverSocialProvider.prototype.acceptUserInvitation = function(friendUrl) {
  * @private
  */
 QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, knockCodes, nick) {
+  console.log('Adding Friend!', arguments);
   var friendDesc = this.configuration_.friends[userId];
   if (!friendDesc) {
     friendDesc = {
@@ -745,12 +748,17 @@ QuiverSocialProvider.prototype.shouldAllowIntro_ = function(fromUserId, introMsg
 QuiverSocialProvider.prototype.err = function(code) {
   var err = {
     errcode: code,
-    message: this.social.ERRCODE[code]
+    message: 'TODO: figure out how to populate message field'
   };
   return err;
 };
 
-/** REGISTER PROVIDER **/
+// Register provider when in a module context.
 if (typeof freedom !== 'undefined') {
-  freedom.social().provideAsynchronous(QuiverSocialProvider);
+  if (!freedom.social) {
+    freedom().provideAsynchronous(QuiverSocialProvider);
+  } else {
+    // FIXME should this be social2?
+    freedom.social().provideAsynchronous(QuiverSocialProvider);
+  }
 }

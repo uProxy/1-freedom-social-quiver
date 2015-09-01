@@ -1,6 +1,6 @@
 {
   "name": "Quiver",
-  "description": "Quiver Social Provider",
+  "description": "Social provider using Websocket protocol",
   "app": {
     "script": [
       "social2.quiver.js"
@@ -55,7 +55,7 @@
       "inviteUser": {
         "type": "method",
         "value": ["string"],
-        "ret": "Object"
+        "ret": "object"
       },
 
       "acceptUserInvitation": {
@@ -63,16 +63,9 @@
         "value": ["string"]
       },
 
-      "blockUser": {
-       "type": "method",
-        "value": [{
-          "userId": "string"
-        }]
-      },
-
-      "removeUser": {
-       "type": "method",
-        "value": [ "string"]
+      "sendEmail": {
+        "type": "method",
+        "value": ["string", "string", "string"]
       },
 
       "clearCachedCredentials": {"type": "method", "value": []},
@@ -132,7 +125,7 @@
         "name": "string",
         "url": "string",
         "imageData": "string",
-        "status": "number"
+        "state": "string"
       }},
 
       "onClientState": {"type": "event", "value": {
@@ -146,8 +139,6 @@
   },
   "permissions": [
     "core.websocket",
-    "core.oauth",
-    "core.storage",
-    "core.xhr"
+    "core.storage"
   ]
 }
