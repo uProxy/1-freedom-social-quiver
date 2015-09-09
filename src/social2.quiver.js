@@ -204,14 +204,20 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
       var myServer = this.configuration_.self.servers[i];
       this.connectAsOwner(myServer, onFirstMessage);
     }
+    var connectedCount = 0, connectedCountGoal = 0;
     for (var userId in this.configuration_.friends) {
       var friend = this.configuration_.friends[userId];
+      connectedCountGoal += friend.servers.length;
       for (var j = 0; j < friend.servers.length; ++j) {
         var friendServer = friend.servers[j];
-        this.connectAsClient(friendServer, friend);
+        this.connectAsClient(friendServer, friend, function() {
+          ++connectedCount;
+          if (connectedCount === connectedCountGoal) {
+            this.sendAllRosterChanged_();
+          }
+        }.bind(this));
       }
     }
-    this.sendAllRosterChanged_();
   }.bind(this));
 };
 
@@ -238,11 +244,14 @@ QuiverSocialProvider.prototype.connectAsOwner = function(serverUrl, continuation
 
   var conn = this.websocket(serverUrl + this.configuration_.self.id);
   this.ownerConnections_[serverUrl] = conn;
+
+  // TODO: Don't run the continuation until after the self-connection completes.
+  var ignoreSelfConnection = function() {};
   // Save the continuation until we get a status message for
   // successful login.
   conn.on("onOpen", function() {
     // Connect to self, in order to be able to send messages to my own other clients.
-    this.connectAsClient(serverUrl, this.configuration_.self);
+    this.connectAsClient(serverUrl, this.configuration_.self, ignoreSelfConnection);
   }.bind(this));
   conn.on("onMessage", this.onMessage.bind(this, continuation));
   conn.on("onError", function (cont, error) {
@@ -261,17 +270,18 @@ QuiverSocialProvider.prototype.disconnectAsOwner = function(serverUrl) {
 
 };
 
-QuiverSocialProvider.prototype.connectAsClient = function(serverUrl, friend) {
+QuiverSocialProvider.prototype.connectAsClient = function(serverUrl, friend, continuation) {
   if (serverUrl[serverUrl.length - 1] != '/') {
     serverUrl = serverUrl + '/';
   }
-  var continuation = function() {};
   if (!this.clientConnections_[friend.id]) {
     this.clientConnections_[friend.id] = {};
   }
   var connections = this.clientConnections_[friend.id];
   if (connections[serverUrl]) {
-    // Already connected.
+    // Connection attempt already started
+    // TODO: Wait until "onOpen"
+    continuation();
     return;
   }
   if (QuiverSocialProvider.count_(connections) >= QuiverSocialProvider.MAX_CONNECTIONS_) {
@@ -281,26 +291,26 @@ QuiverSocialProvider.prototype.connectAsClient = function(serverUrl, friend) {
   var fullPath = serverUrl + friend.id + '/' + this.configuration_.self.id;
   var conn = this.websocket(fullPath);
   connections[serverUrl] = conn;
-  // Save the continuation until we get a status message for
-  // successful login.
   conn.on("onOpen", function() {
     this.changeRoster(friend.id);
     var introMsg = this.makeIntroMsg_(friend);
     conn.send({'text': JSON.stringify(introMsg)});
+    continuation();
   }.bind(this));
   // Uncomment below to allow owner->client messages (not currently used).
   // conn.on("onMessage", this.onMessage.bind(this, continuation));
-  conn.on("onError", function (cont, error) {
+  conn.on("onError", function (error) {
     delete connections[serverUrl];
     cont(undefined, this.err('ERR_CONNECTION'));
-  }.bind(this, continuation));
-  conn.on("onClose", function (cont, msg) {
+  }.bind(this));
+  conn.on("onClose", function () {
     delete connections[serverUrl];
     if (QuiverSocialProvider.isEmpty_(connections)) {
       delete this.clientConnections_[friend.id];
     }
     this.changeRoster(friend.id);
-  }.bind(this, continuation));
+    this.websocket.close(conn);
+  }.bind(this));
 };
 
 /**
@@ -382,8 +392,7 @@ QuiverSocialProvider.prototype.acceptUserInvitation = function(friendUrl, cb) {
   var serverUrl = contact.slice(0, splitPathIndex);
   var userId = contact.slice(splitPathIndex + 1);
 
-  this.addFriend_([serverUrl], userId, [knockCode], null);
-  cb();
+  this.addFriend_([serverUrl], userId, [knockCode], null, cb);
 };
 
 /**
@@ -393,7 +402,7 @@ QuiverSocialProvider.prototype.acceptUserInvitation = function(friendUrl, cb) {
  * @param {?string} nick
  * @private
  */
-QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, knockCodes, nick) {
+QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, knockCodes, nick, continuation) {
   console.log('Adding Friend!', arguments);
   var friendDesc = this.configuration_.friends[userId];
   if (!friendDesc) {
@@ -425,7 +434,7 @@ QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, knockCodes
     friendDesc.nick = nick;
   }
   this.syncConfiguration_(function() {
-    this.connectAsClient(servers[0], friendDesc);
+    this.connectAsClient(servers[0], friendDesc, continuation);
   }.bind(this));
 };
 
@@ -498,7 +507,8 @@ QuiverSocialProvider.prototype.makeClientState_ = function(userId, clientSuffix)
   if (userId == this.configuration_.self.id) {
     isOnline = !QuiverSocialProvider.isEmpty_(this.ownerConnections_);
   } else {
-    isOnline = !!this.clients_[userId] && !!this.clients_[userId][clientSuffix];
+    isOnline = !QuiverSocialProvider.isEmpty_(this.clientConnections_[userId]) &&
+        !!this.clients_[userId] && !!this.clients_[userId][clientSuffix];
   }
   return {
     userId: userId,
@@ -718,8 +728,9 @@ QuiverSocialProvider.prototype.onEndpointMessage = function(fromUserId, msg) {
       if (!this.clients_[fromUserId][msg.fromClientSuffix]) {
         this.clients_[fromUserId][msg.fromClientSuffix] = QuiverSocialProvider.makeClientTracker_();
       }
-      this.addFriend_(msg.servers, fromUserId, msg.knockCodes, msg.nick);
-      this.changeRoster(fromUserId, msg.fromClientSuffix);
+      this.addFriend_(msg.servers, fromUserId, msg.knockCodes, msg.nick, function() {
+        this.changeRoster(fromUserId, msg.fromClientSuffix);
+      }.bind(this));
     }
   }
 };
