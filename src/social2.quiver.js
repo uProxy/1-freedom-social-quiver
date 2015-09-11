@@ -205,17 +205,18 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
       this.connectAsOwner(myServer, onFirstMessage);
     }
     var connectedCount = 0, connectedCountGoal = 0;
+    var onClientConnection = function() {
+      ++connectedCount;
+      if (connectedCount === connectedCountGoal) {
+        this.sendAllRosterChanged_();
+      }
+    }.bind(this);
     for (var userId in this.configuration_.friends) {
       var friend = this.configuration_.friends[userId];
       connectedCountGoal += friend.servers.length;
       for (var j = 0; j < friend.servers.length; ++j) {
         var friendServer = friend.servers[j];
-        this.connectAsClient(friendServer, friend, function() {
-          ++connectedCount;
-          if (connectedCount === connectedCountGoal) {
-            this.sendAllRosterChanged_();
-          }
-        }.bind(this));
+        this.connectAsClient(friendServer, friend, onClientConnection);
       }
     }
   }.bind(this));
