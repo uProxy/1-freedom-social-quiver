@@ -61,6 +61,24 @@ module.exports = function (grunt) {
    **/
   grunt.initConfig({
     pkg: grunt.file.readJSON('package.json'),
+    browserify: {
+      main: {
+        src: 'src/socketio.quiver.js',
+        dest: 'dist/socketio.quiver.js'
+      },
+      options: {
+        browserifyOptions: {
+          debug: true,
+        }
+      }
+    },
+    copy: {
+      dist: {
+        src: ['src/socketio.quiver.json'],
+        dest: 'dist/',
+        flatten: true, filter: 'isFile', expand: true
+      }
+    },
     karma: {
       options: { configFile: 'karma.conf.js' },
       single: { singleRun: true, autoWatch: false },
@@ -105,11 +123,11 @@ module.exports = function (grunt) {
         TieredCompilation: false // will use 'java -server -XX:+TieredCompilation -jar compiler.jar'
       },
       mainTarget: {
-        src: 'src/social2.quiver.js', // FILES.src,
+        src: 'src/socketio.quiver.js', // FILES.src,
         dest: 'closure/output.js'
       }
     },
-    clean: [],
+    clean: ['dist/'],
     connect: {
       default: {
         options: {
@@ -131,8 +149,10 @@ module.exports = function (grunt) {
   });
 
   // Load tasks.
+  grunt.loadNpmTasks('grunt-browserify');
   grunt.loadNpmTasks('grunt-contrib-clean');
   grunt.loadNpmTasks('grunt-contrib-connect');
+  grunt.loadNpmTasks('grunt-contrib-copy');
   grunt.loadNpmTasks('grunt-contrib-jshint');
   grunt.loadNpmTasks('grunt-contrib-yuidoc');
   grunt.loadNpmTasks('grunt-closure-tools');
@@ -141,6 +161,8 @@ module.exports = function (grunt) {
   // Default tasks.
   grunt.registerTask('build', [
     'jshint',
+    'browserify',
+    'copy:dist',
     'connect:default'
   ]);
   grunt.registerTask('test', [
