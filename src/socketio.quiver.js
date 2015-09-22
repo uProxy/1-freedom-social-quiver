@@ -1,5 +1,14 @@
-/*globals freedom:true, DEBUG */
+/*globals freedom:true, XMLHttpRequest:true, DEBUG */
 /*jslint indent:2, white:true, node:true, sloppy:true, browser:true */
+
+var xhr = require('./xhrshim');
+/* jshint ignore:start */
+XMLHttpRequest = xhr;
+/* jshint ignore:end */
+if (typeof window !== 'undefined') {
+  window.XMLHttpRequest = xhr;
+}
+
 var io = require('socket.io-client');
 
 var myDebug = require("debug");
@@ -244,7 +253,10 @@ QuiverSocialProvider.prototype.connect_ = function(serverUrl) {
     return;
   }
 
-  var socket = io.connect(serverUrl);
+  var connectOptions = {
+    'transports': ['polling']  // Force XHR so we can domain-front
+  };
+  var socket = io.connect(serverUrl, connectOptions);
   var resolve, reject;
   this.connections_[serverUrl] = {
     socket: socket,
