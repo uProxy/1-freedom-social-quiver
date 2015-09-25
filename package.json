@@ -17,6 +17,7 @@
   "main": "Gruntfile.js",
   "dependencies": {
     "debug": "0.7.4",
+    "parseuri": "^0.0.4",
     "socket.io-client": "~1.0"
   },
   "devDependencies": {
@@ -41,6 +42,9 @@
     "socket.io": "~1.0"
   },
   "scripts": {
+    "start": "node server/qsio_server.js",
+    "monitor": "nodemon server/qsio_server.js",
+    "deploy": "gcloud preview app deploy app.yaml",
     "test": "grunt test --verbose"
   }
 }

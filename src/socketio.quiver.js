@@ -9,6 +9,7 @@ if (typeof window !== 'undefined') {
   window.XMLHttpRequest = xhr;
 }
 
+
 var io = require('socket.io-client');
 
 var myDebug = require("debug");
@@ -57,7 +58,7 @@ function QuiverSocialProvider(dispatchEvent) {
 // TODO: Replace this localhost server with a public host.  Using a
 // localhost server prevents you from talking to anyone.
 /** @const @private {!Array.<string>} */
-QuiverSocialProvider.DEFAULT_SERVERS_ = ['http://localhost:8087'];
+QuiverSocialProvider.DEFAULT_SERVERS_ = ['https://google.com.quiver-test.appspot.com.2.domain_front'];
 
 /** @const @private {number} */
 QuiverSocialProvider.MAX_CONNECTIONS_ = 5;
@@ -258,6 +259,7 @@ QuiverSocialProvider.prototype.connect_ = function(serverUrl) {
   };
   var socket = io.connect(serverUrl, connectOptions);
   var resolve, reject;
+  var everConnected = false;
   this.connections_[serverUrl] = {
     socket: socket,
     ready: new Promise(function(F, R) {
@@ -268,12 +270,18 @@ QuiverSocialProvider.prototype.connect_ = function(serverUrl) {
     friends: []
   };
   socket.on("connect", function() {
+    everConnected = true;
     resolve();  // FIXME for breakpoint.
   });
+
   socket.on("error", function(err) {
-    console.log('Failed to connect to ' + serverUrl);
-    this.disconnect_(serverUrl);
-    reject(err);
+    if (!everConnected) {
+      console.log('Failed to connect to ' + serverUrl);
+      this.disconnect_(serverUrl);
+      reject(err);
+    } else {
+      console.log('Ignoring socket.io error: ' + err);
+    }
   }.bind(this));
 
   socket.on("message", this.onMessage.bind(this, serverUrl));

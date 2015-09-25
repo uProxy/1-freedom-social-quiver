@@ -1,5 +1,8 @@
 /*globals freedom:true, DEBUG */
 
+var frontdomain = require('./frontdomain');
+var parseuri = require('parseuri');
+
 function MyEventTarget() {
   this.listeners_ = {};
 }
@@ -84,7 +87,7 @@ XhrShim.prototype.bindProgressEvent_ = function(name) {
   this.xhr_.on('on' + name, function(event) {
     this.refresh_().then(function() {
       if (name === 'loadend') {
-        // TODO: freedom['core.xhr'].close(this.xhr_);
+        freedom['core.xhr'].close(this.xhr_);
       }
       // Freedom seems to lose the event type attribute
       event.type = name;
@@ -154,7 +157,18 @@ XhrShim.prototype.open = function(method, url, async, username, password) {
   }
 
   this.readyState = this.OPENED;
-  this.xhr_.open(method, url, async, username, password);
+
+  // Domain fronting
+  var parsed = parseuri(url);
+  var isFront = frontdomain.isFront(parsed.host);
+  if (isFront) {
+    var parts = frontdomain.demunge(parsed.host);
+    var frontedUrl = url.replace(parsed.host, parts.front);  // TODO: Only replace first instance
+    this.xhr_.open(method, frontedUrl, async, username, password);
+    this.setRequestHeader('Host', parts.host);
+  } else {
+    this.xhr_.open(method, url, async, username, password);
+  }
 };
 
 XhrShim.prototype.setRequestHeader = function(header, value) {
@@ -215,6 +229,11 @@ XhrShim.prototype.send = function(data) {
 };
 
 XhrShim.prototype.abort = function(data) {
+  if (this.readyState === this.DONE) {
+    // Abort would have no effect, and the core provider may already
+    // have been disposed.
+    return;
+  }
   this.xhr_.abort();
 };
 
@@ -233,18 +252,26 @@ XhrShim.prototype.parseResponseHeaders_ = function(headers) {
   }.bind(this));
 };
 
-XhrShim.prototype.getResponseHeader = function(header) {
-  if (!this.responseHeaders_[header]) {
-    return '';
-  }
-
+XhrShim.prototype.getCaseSensitiveResponseHeader_ = function(header) {
   return this.responseHeaders_[header].join(', ');
+};
+
+XhrShim.prototype.getResponseHeader = function(header) {
+  header = header.toLowerCase();
+  // Case-insensitive match!
+  // TODO: Replace with O(1) algorithm
+  for (var key in this.responseHeaders_) {
+    if (key.toLowerCase() === header) {
+      return this.getCaseSensitiveResponseHeader_(key);
+    }
+  }
+  return '';
 };
 
 XhrShim.prototype.getAllResponseHeaders = function() {
   var lines = [];
   for (var header in this.responseHeaders_) {
-    var line = header + ': ' + this.getResponseHeader(header);
+    var line = header + ': ' + this.getCaseSensitiveResponseHeader_(header);
     lines.push(line);
   }
 

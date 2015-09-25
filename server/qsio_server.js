@@ -26,4 +26,4 @@ io.on('connection', function(socket) {
   });
 });
 
-server.listen(8087);
+server.listen(process.env.PORT || 8080);
