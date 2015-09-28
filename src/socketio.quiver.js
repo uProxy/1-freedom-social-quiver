@@ -13,7 +13,7 @@ if (typeof window !== 'undefined') {
 var io = require('socket.io-client');
 
 var myDebug = require("debug");
-myDebug.enable('worker:*');
+myDebug.enable('*');
 
 /**
  * Implementation of a Social provider that depends on
@@ -58,7 +58,7 @@ function QuiverSocialProvider(dispatchEvent) {
 // TODO: Replace this localhost server with a public host.  Using a
 // localhost server prevents you from talking to anyone.
 /** @const @private {!Array.<string>} */
-QuiverSocialProvider.DEFAULT_SERVERS_ = ['https://google.com.quiver-test.appspot.com.2.domain_front'];
+QuiverSocialProvider.DEFAULT_SERVERS_ = ['https://quiver-test.appspot.com/'];
 
 /** @const @private {number} */
 QuiverSocialProvider.MAX_CONNECTIONS_ = 5;

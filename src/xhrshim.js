@@ -3,6 +3,15 @@
 var frontdomain = require('./frontdomain');
 var parseuri = require('parseuri');
 
+function bufferToString(buffer) {
+  var byteArray = new Uint8Array(buffer);
+  var chars = [];
+  for (var i = 0; i < byteArray.length; ++i) {
+    chars.push(String.fromCharCode(byteArray[i]));
+  }
+  return chars.join('');
+}
+
 function MyEventTarget() {
   this.listeners_ = {};
 }
@@ -45,7 +54,10 @@ MyEventTarget.prototype.dispatchEvent = function(event) {
   }
 };
 
+var shimCounter = 0;
 function XhrShim() {
+  this.id_ = ++shimCounter;
+  this.log_('Constructing');
   MyEventTarget.call(this);
   this.xhr_ = freedom['core.xhr']();
   this.listeners_ = {};
@@ -83,6 +95,10 @@ function XhrShim() {
 
 XhrShim.prototype = Object.create(MyEventTarget.prototype);
 
+XhrShim.prototype.log_ = function(msg) {
+  console.log('XhrShim ' + this.id_ + ': ' + msg);
+};
+
 XhrShim.prototype.bindProgressEvent_ = function(name) {
   this.xhr_.on('on' + name, function(event) {
     this.refresh_().then(function() {
@@ -118,6 +134,7 @@ XhrShim.prototype.refresh_ = function() {
       if (!response) {
         this.response = response;
       } else if (response.buffer) {
+        this.log_('XhrShim got response buffer: ' + bufferToString(response.buffer));
         this.response = response.buffer;
       } else if (response.object) {
         this.response = response.object;
@@ -152,6 +169,7 @@ XhrShim.LOADING = 3;
 XhrShim.DONE = 4;
 
 XhrShim.prototype.open = function(method, url, async, username, password) {
+  this.log_('XhrShim::open(' + method + ', ' + url + ')');
   if (async === false) {
     throw new Error('XhrShim only supports async operation');
   }
@@ -206,6 +224,7 @@ Object.defineProperty(XhrShim.prototype, 'withCredentials', {
 });
 
 XhrShim.prototype.send = function(data) {
+  this.log_('XhrShim::send(' + data + ')');
   if (this.readyState !== this.OPENED) {
     // TODO: Should be InvalidStateError
     throw new Error('XhrShim: cannot send in state ' + this.readyState);
@@ -240,9 +259,12 @@ XhrShim.prototype.abort = function(data) {
 XhrShim.prototype.parseResponseHeaders_ = function(headers) {
   var lines = headers.split('\r\n');
   lines.forEach(function(line) {
+    if (line.length === 0) {
+      return;
+    }
     var groups = line.match(/(^[^:]+): (.+)$/);
     if (!groups || groups.length < 3) {
-      console.log('Failed to parse ' + line + ' from ' + headers);
+      this.log_('Failed to parse ' + line + ' from ' + headers);
       return;
     }
     var header = groups[1];
@@ -307,6 +329,7 @@ Object.defineProperty(XhrShim.prototype, 'responseText', {
       // TODO: Should be InvalidStateError
       throw new Error('XhrShim: no responseText for type ' + this.responseType_);
     }
+    this.log_('XhrShim returning responseText ' + this.response);
     return this.response;
   }
 });
