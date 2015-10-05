@@ -58,7 +58,7 @@ function QuiverSocialProvider(dispatchEvent) {
 // TODO: Replace this localhost server with a public host.  Using a
 // localhost server prevents you from talking to anyone.
 /** @const @private {!Array.<string>} */
-QuiverSocialProvider.DEFAULT_SERVERS_ = ['https://quiver-test.appspot.com/'];
+QuiverSocialProvider.DEFAULT_SERVERS_ = ['https://a0.awsstatic.com.d1j0v91oi5t6ys.cloudfront.net.3.domain_front'];
 
 /** @const @private {number} */
 QuiverSocialProvider.MAX_CONNECTIONS_ = 5;
@@ -67,7 +67,7 @@ QuiverSocialProvider.MAX_CONNECTIONS_ = 5;
  * @private @typedef {{
  *   toCounter: number,
  *   fromCounter: number,
- *   gotIntro: boolean
+ *   gotIntro: Object.<string, boolean> // serverUrl => true
  * }} 
  */
 QuiverSocialProvider.clientTracker_ = undefined;
@@ -76,7 +76,7 @@ QuiverSocialProvider.makeClientTracker_ = function() {
   return {
     toCounter: 0,
     fromCounter: 0,
-    gotIntro: false
+    gotIntro: {}
   };
 };
 
@@ -255,7 +255,8 @@ QuiverSocialProvider.prototype.connect_ = function(serverUrl) {
   }
 
   var connectOptions = {
-    'transports': ['polling']  // Force XHR so we can domain-front
+    'transports': ['polling'],  // Force XHR so we can domain-front
+    'forceNew': true  // Required for login-after-logout to work
   };
   var socket = io.connect(serverUrl, connectOptions);
   var resolve, reject;
@@ -354,7 +355,7 @@ QuiverSocialProvider.prototype.connectAsClient = function(serverUrl, friend, con
       'rooms': [friend.id],
       'msg': {
         'cmd': 'disconnected',
-        'userId': this.configuration_.self.id,
+        'from': this.configuration_.self.id,
         'fromClient': this.clientSuffix_
       }
     });
@@ -570,7 +571,8 @@ QuiverSocialProvider.prototype.makeClientState_ = function(userId, clientSuffix)
     isOnline = this.countOwnerConnections_() > 0;
   } else {
     isOnline = !QuiverSocialProvider.isEmpty_(this.clientConnections_[userId]) &&
-        !!this.clients_[userId] && !!this.clients_[userId][clientSuffix];
+        !!this.clients_[userId] && !!this.clients_[userId][clientSuffix] &&
+        !QuiverSocialProvider.isEmpty_(this.clients_[userId][clientSuffix].gotIntro);
   }
   return {
     userId: userId,
@@ -771,8 +773,9 @@ QuiverSocialProvider.prototype.onMessage = function(serverUrl, msg) {
         this.clients_[fromUserId][msg.fromClient] = QuiverSocialProvider.makeClientTracker_();
       }
       this.addFriend_(msg.servers, fromUserId, msg.knockCodes, msg.nick, function() {
-        if (!this.clients_[fromUserId][msg.fromClient].gotIntro) {
-          this.clients_[fromUserId][msg.fromClient].gotIntro = true;
+        var gotIntro = this.clients_[fromUserId][msg.fromClient].gotIntro;
+        if (!gotIntro[serverUrl]) {
+          gotIntro[serverUrl] = true;
           // Reply to the first intro message we receive.  This will result in
           // a redundant triple-handshake for no reason ... except that we have
           // no way to be sure that an "intro" message was in response to ours,
@@ -787,9 +790,11 @@ QuiverSocialProvider.prototype.onMessage = function(serverUrl, msg) {
         }
         this.changeRoster(fromUserId, msg.fromClient);
       }.bind(this));
-    } else if (msg.cmd === 'disconnected') {
-      // TODO: Ping to see if the user is still alive.
     }
+  } else if (msg.cmd === 'disconnected') {
+    delete this.clients_[fromUserId][msg.fromClient].gotIntro[serverUrl];
+    // TODO: Ping to see if the user is still alive.
+    this.changeRoster(fromUserId, msg.fromClient);
   }
 };
 

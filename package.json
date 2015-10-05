@@ -18,7 +18,7 @@
   "dependencies": {
     "debug": "0.7.4",
     "parseuri": "^0.0.4",
-    "socket.io-client": "~1.0"
+    "socket.io-client": "^1.2"
   },
   "devDependencies": {
     "grunt": "~0.4.3",
@@ -39,7 +39,7 @@
     "karma-story-reporter": "~0.2.2",
     "es6-promise": "~1.0.0",
     "es5-shim": "~4.0.0",
-    "socket.io": "~1.0"
+    "socket.io": "^1.2"
   },
   "scripts": {
     "start": "node server/qsio_server.js",
