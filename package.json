@@ -42,6 +42,7 @@
     "socket.io": "^1.2"
   },
   "scripts": {
+    "prepublish": "grunt build",
     "start": "node server/qsio_server.js",
     "monitor": "nodemon server/qsio_server.js",
     "deploy": "gcloud preview app deploy app.yaml",
