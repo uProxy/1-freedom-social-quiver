@@ -563,9 +563,10 @@ QuiverSocialProvider.prototype.makeProfile_ = function(userId) {
 /**
  * @param {string} userId
  * @param {string} clientSuffix
+ * @param {boolean=} opt_forceOnline
  * @private
  */
-QuiverSocialProvider.prototype.makeClientState_ = function(userId, clientSuffix) {
+QuiverSocialProvider.prototype.makeClientState_ = function(userId, clientSuffix, opt_forceOnline) {
   var isOnline;
   if (userId == this.configuration_.self.id) {
     isOnline = this.countOwnerConnections_() > 0;
@@ -574,6 +575,7 @@ QuiverSocialProvider.prototype.makeClientState_ = function(userId, clientSuffix)
         !!this.clients_[userId] && !!this.clients_[userId][clientSuffix] &&
         !QuiverSocialProvider.isEmpty_(this.clients_[userId][clientSuffix].gotIntro);
   }
+  isOnline = opt_forceOnline || isOnline;
   return {
     userId: userId,
     clientId: userId + ':' + clientSuffix,
@@ -756,8 +758,10 @@ QuiverSocialProvider.prototype.onMessage = function(serverUrl, msg) {
       if (this.clients_[fromUserId] && this.clients_[fromUserId][msg.fromClient] &&
           msg.index > this.clients_[fromUserId][msg.fromClient].fromCounter) {
         this.clients_[fromUserId][msg.fromClient].fromCounter = msg.index;
+        // |true| means force ClientState to be ONLINE.  This is needed because
+        // we cannot be sending messages from clients who are ostensibly offline!
         this.dispatchEvent('onMessage', {
-          from: this.makeClientState_(fromUserId, msg.fromClient),
+          from: this.makeClientState_(fromUserId, msg.fromClient, true),
           message: msg.msg
         });
       } else {
