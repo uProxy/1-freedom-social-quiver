@@ -58,7 +58,7 @@ function QuiverSocialProvider(dispatchEvent) {
 // TODO: Replace this localhost server with a public host.  Using a
 // localhost server prevents you from talking to anyone.
 /** @const @private {!Array.<string>} */
-QuiverSocialProvider.DEFAULT_SERVERS_ = ['https://a0.awsstatic.com.d1j0v91oi5t6ys.cloudfront.net.3.domain_front'];
+QuiverSocialProvider.DEFAULT_SERVERS_ = ['https://d1j0v91oi5t6ys.cloudfront.net'];
 
 /** @const @private {number} */
 QuiverSocialProvider.MAX_CONNECTIONS_ = 5;
