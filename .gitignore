@@ -4,3 +4,4 @@ config.js
 doc/
 *~
 closure/*
+dist/*

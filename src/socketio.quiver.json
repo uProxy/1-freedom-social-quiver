@@ -37,7 +37,8 @@
           "version": "string",
           "url": "string",
           "interactive": "boolean",
-          "rememberLogin": "boolean"
+          "rememberLogin": "boolean",
+          "userName": "string"
         }],
         "ret": {
           "userId": "string",

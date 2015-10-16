@@ -68,7 +68,7 @@ QuiverSocialProvider.MAX_CONNECTIONS_ = 5;
  *   toCounter: number,
  *   fromCounter: number,
  *   gotIntro: Object.<string, boolean> // serverUrl => true
- * }} 
+ * }}
  */
 QuiverSocialProvider.clientTracker_ = undefined;
 
@@ -86,7 +86,7 @@ QuiverSocialProvider.makeClientTracker_ = function() {
  *   nick: ?string,
  *   servers: !Array.<string>,
  *   knockCodes: !Array.<string>
- * }} 
+ * }}
  */
 QuiverSocialProvider.userDesc_ = undefined;
 
@@ -194,14 +194,7 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
     this.clients_[this.configuration_.self.id] = {};
     this.clients_[this.configuration_.self.id][this.clientSuffix_] = QuiverSocialProvider.makeClientTracker_();
 
-    // TODO: remove this terrible version JSON hack copied from the "email" provider
-    console.log('login called with version ' + loginOpts.version);
-    try {
-      var versionObj = JSON.parse(loginOpts.version);
-      this.setNick_(versionObj.userId);
-    } catch(e) {
-      console.log('failed to parse version object');  // TODO: remove
-    }
+    this.setNick_(loginOpts.userName);
 
     var finishLogin = function() {
       var clientState = this.makeClientState_(this.configuration_.self.id, this.clientSuffix_);
@@ -212,7 +205,7 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
       var myServer = this.configuration_.self.servers[i];
       this.connectAsOwner(myServer, finishLogin);
     }
-    
+
     var connectedCount = 0, connectedCountGoal = 0;
     var onClientConnection = function() {
       ++connectedCount;
@@ -590,7 +583,7 @@ QuiverSocialProvider.prototype.makeClientState_ = function(userId, clientSuffix,
  * Use the clientId returned from social.login() to extract your element
  * NOTE: This does not guarantee to be entire roster, just clients we're currently aware of at the moment
  * e.g. social.getClients()
- * 
+ *
  * @override
  *   On failure, rejects with an error code (see above)
  */
@@ -610,12 +603,12 @@ QuiverSocialProvider.prototype.getClients = function(continuation) {
   continuation(clientStates);
 };
 
-/** 
+/**
  * Send a message to user on your network
  * If the destination is not specified or invalid, the message is dropped
  * Note: userId and clientId are the same for this.websocket
  * e.g. sendMessage(String destination_id, String message)
- * 
+ *
  * @override
  */
 QuiverSocialProvider.prototype.sendMessage = function(to, msg, continuation) {
@@ -681,7 +674,7 @@ QuiverSocialProvider.prototype.sendMessage = function(to, msg, continuation) {
  * Disconnects from the Web Socket server
  * e.g. logout(Object options)
  * No options needed
- * 
+ *
  * @override
  */
 QuiverSocialProvider.prototype.logout = function(continuation) {
