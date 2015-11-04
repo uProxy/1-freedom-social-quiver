@@ -434,6 +434,7 @@ QuiverSocialProvider.prototype.selfDescriptionChanged_ = function() {
 
 /**
  * @param {string} friendUrl
+ * @param {string} inviteUserData
  * @param {Function} cb
  * @private
  */
@@ -716,6 +717,7 @@ QuiverSocialProvider.prototype.logout = function(continuation) {
  * @private
  * @param {string} userId
  * @param {?string=} clientSuffix Optional.
+ * @param {?string} inviteUserData
  **/
 QuiverSocialProvider.prototype.changeRoster = function(userId, clientSuffix, inviteUserData) {
   var userProfile = this.makeProfile_(userId);
