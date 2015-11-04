@@ -723,7 +723,9 @@ QuiverSocialProvider.prototype.changeRoster = function(userId, clientSuffix, inv
 
   if (clientSuffix) {
     var clientState = this.makeClientState_(userId, clientSuffix);
-    clientState.inviteUserData = inviteUserData;
+    if (inviteUserData) {
+      clientState.inviteUserData = inviteUserData;
+    }
     this.dispatchEvent('onClientState', clientState);
   } else {
     for (var eachClientSuffix in this.clients_[userId]) {
