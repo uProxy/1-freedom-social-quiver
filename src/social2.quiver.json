@@ -134,7 +134,8 @@
         "clientId": "string",
         "status": "string",
         "lastUpdated": "number",
-        "lastSeen": "number"
+        "lastSeen": "number",
+        "inviteUserData": "string"
       }}
     }
   },

@@ -39,7 +39,7 @@ function QuiverSocialProvider(dispatchEvent) {
   this.storage = freedom['core.storage']();
 
   /** @private {string} */
-  this.clientSuffix_ = String(Math.random());
+  this.clientSuffix_ = null;
 
   /** @private {!Object.<string, !Object.<string, QuiverSocialProvider.clientTracker_>>} */
   this.clients_ = {};  // userId, clientSuffix => clientTracker
@@ -190,6 +190,8 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
     return;
   }
 
+  this.clientSuffix_ = loginOpts.agent;
+
   this.syncConfiguration_(function() {
     this.clients_[this.configuration_.self.id] = {};
     this.clients_[this.configuration_.self.id][this.clientSuffix_] = QuiverSocialProvider.makeClientTracker_();
@@ -218,7 +220,7 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
       connectedCountGoal += friend.servers.length;
       for (var j = 0; j < friend.servers.length; ++j) {
         var friendServer = friend.servers[j];
-        this.connectAsClient(friendServer, friend, onClientConnection);
+        this.connectAsClient(friendServer, friend, null, onClientConnection);
       }
     }
   }.bind(this));
@@ -301,7 +303,7 @@ QuiverSocialProvider.prototype.connectAsOwner = function(serverUrl, continuation
     connection.socket.emit('join', this.configuration_.self.id);
 
     // Connect to self, in order to be able to send messages to my own other clients.
-    this.connectAsClient(serverUrl, this.configuration_.self, continuation);
+    this.connectAsClient(serverUrl, this.configuration_.self, null, continuation);
   }.bind(this)).catch(function(err) {
     continuation(undefined, err);
   });
@@ -317,7 +319,7 @@ QuiverSocialProvider.prototype.disconnect_ = function(serverUrl) {
     }
 };
 
-QuiverSocialProvider.prototype.connectAsClient = function(serverUrl, friend, continuation) {
+QuiverSocialProvider.prototype.connectAsClient = function(serverUrl, friend, inviteUserData, continuation) {
   if (serverUrl[serverUrl.length - 1] != '/') {
     serverUrl = serverUrl + '/';
   }
@@ -340,6 +342,9 @@ QuiverSocialProvider.prototype.connectAsClient = function(serverUrl, friend, con
 
   connection.ready.then(function() {
     var introMsg = this.makeIntroMsg_(friend);
+    if (inviteUserData) {
+      introMsg.inviteUserData = inviteUserData;
+    }
     socket.emit('emit', {
       'rooms': [friend.id],
       'msg': introMsg
@@ -429,10 +434,11 @@ QuiverSocialProvider.prototype.selfDescriptionChanged_ = function() {
 
 /**
  * @param {string} friendUrl
+ * @param {string} inviteUserData
  * @param {Function} cb
  * @private
  */
-QuiverSocialProvider.prototype.acceptUserInvitation = function(friendUrl, cb) {
+QuiverSocialProvider.prototype.acceptUserInvitation = function(friendUrl, inviteUserData, cb) {
   var splitIndex = friendUrl.lastIndexOf(':');
   if (splitIndex === -1) {
     // No friend, just a server URL?
@@ -448,7 +454,7 @@ QuiverSocialProvider.prototype.acceptUserInvitation = function(friendUrl, cb) {
   var serverUrl = contact.slice(0, splitPathIndex);
   var userId = contact.slice(splitPathIndex + 1);
 
-  this.addFriend_([serverUrl], userId, [knockCode], null, cb);
+  this.addFriend_([serverUrl], userId, [knockCode], null, inviteUserData, cb);
 };
 
 /**
@@ -456,9 +462,10 @@ QuiverSocialProvider.prototype.acceptUserInvitation = function(friendUrl, cb) {
  * @param {string} userId
  * @param {!Array.<string>} knockCodes
  * @param {?string} nick
+ * @param {?string} inviteUserData
  * @private
  */
-QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, knockCodes, nick, continuation) {
+QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, knockCodes, nick, inviteUserData, continuation) {
   console.log('Adding Friend!', arguments);
   var friendDesc = this.configuration_.friends[userId];
   if (!friendDesc) {
@@ -490,7 +497,7 @@ QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, knockCodes
     friendDesc.nick = nick;
   }
   this.syncConfiguration_(function() {
-    this.connectAsClient(servers[0], friendDesc, continuation);
+    this.connectAsClient(servers[0], friendDesc, inviteUserData, continuation);
   }.bind(this));
 };
 
@@ -710,13 +717,17 @@ QuiverSocialProvider.prototype.logout = function(continuation) {
  * @private
  * @param {string} userId
  * @param {?string=} clientSuffix Optional.
+ * @param {?string} inviteUserData
  **/
-QuiverSocialProvider.prototype.changeRoster = function(userId, clientSuffix) {
+QuiverSocialProvider.prototype.changeRoster = function(userId, clientSuffix, inviteUserData) {
   var userProfile = this.makeProfile_(userId);
   this.dispatchEvent('onUserProfile', userProfile);
 
   if (clientSuffix) {
     var clientState = this.makeClientState_(userId, clientSuffix);
+    if (inviteUserData) {
+      clientState.inviteUserData = inviteUserData;
+    }
     this.dispatchEvent('onClientState', clientState);
   } else {
     for (var eachClientSuffix in this.clients_[userId]) {
@@ -769,7 +780,7 @@ QuiverSocialProvider.prototype.onMessage = function(serverUrl, msg) {
       if (!this.clients_[fromUserId][msg.fromClient]) {
         this.clients_[fromUserId][msg.fromClient] = QuiverSocialProvider.makeClientTracker_();
       }
-      this.addFriend_(msg.servers, fromUserId, msg.knockCodes, msg.nick, function() {
+      this.addFriend_(msg.servers, fromUserId, msg.knockCodes, msg.nick, null, function() {
         var gotIntro = this.clients_[fromUserId][msg.fromClient].gotIntro;
         if (!gotIntro[serverUrl]) {
           gotIntro[serverUrl] = true;
@@ -785,7 +796,7 @@ QuiverSocialProvider.prototype.onMessage = function(serverUrl, msg) {
             'msg': introMsg
           });
         }
-        this.changeRoster(fromUserId, msg.fromClient);
+        this.changeRoster(fromUserId, msg.fromClient, msg.inviteUserData);
       }.bind(this));
     }
   } else if (msg.cmd === 'disconnected') {

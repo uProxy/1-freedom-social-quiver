@@ -1,7 +1,7 @@
 {
   "name": "freedom-social-quiver",
   "description": "Multi-server Social Provider",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "homepage": "",
   "bugs": {
     "url": "http://github.com/bemasc/freedom-social-quiver/issues"

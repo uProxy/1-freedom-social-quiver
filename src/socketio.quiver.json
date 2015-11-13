@@ -61,7 +61,7 @@
 
       "acceptUserInvitation": {
        "type": "method",
-        "value": ["string"]
+        "value": ["string", "string"]
       },
 
       "sendEmail": {
@@ -134,7 +134,8 @@
         "clientId": "string",
         "status": "string",
         "lastUpdated": "number",
-        "lastSeen": "number"
+        "lastSeen": "number",
+        "inviteUserData": "string"
       }}
     }
   },
