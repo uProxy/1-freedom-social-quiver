@@ -141,6 +141,6 @@
   },
   "permissions": [
     "core.storage",
-    "core.xhr"
+    "core.tcpsocket"
   ]
 }

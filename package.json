@@ -16,6 +16,7 @@
   "main": "Gruntfile.js",
   "dependencies": {
     "debug": "0.7.4",
+    "freedom-xhr": "git://github.com/uProxy/freedom-xhr.git#master",
     "parseuri": "^0.0.4",
     "socket.io-client": "^1.2"
   },
