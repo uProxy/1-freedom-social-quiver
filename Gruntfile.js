@@ -1,21 +1,7 @@
 /**
  * Gruntfile for freedom-social-quiver
  *
- * Here are the common tasks used:
- * build
- *  - Lint and compile
- *  - (default Grunt task) 
- *  - This must be run before ANY karma task (because of connect:default)
- * demo
- *  - start a web server for seeing demos at
- *    http://localhost:8000/demo
- * test
- *  - Build, and run all unit tests on 
- *    Chrome, Firefox, and PhantomJS
- * debug
- *  - Same as test, except keeps the browsers open 
- *    and reruns tests on watched file changes.
- *  - Used to debug unit tests
+ * To build, use "grunt build".
  **/
 
 var fileInfo = require('freedom');
@@ -30,16 +16,6 @@ var addPrefix = function(file) {
 var FILES = {
   src: [
     'src/**/*.js'
-  ],
-  demo: [
-    'demo/**/*.js'
-  ],
-  specHelper: [
-    'config.js',
-    'spec/helper/**/*.js'
-  ],
-  spec: [
-    'spec/**/*.spec.js'
   ]
 };
 
@@ -79,22 +55,11 @@ module.exports = function (grunt) {
         flatten: true, filter: 'isFile', expand: true
       }
     },
-    karma: {
-      options: { configFile: 'karma.conf.js' },
-      single: { singleRun: true, autoWatch: false },
-      watch: { singleRun: false, autoWatch: true },
-      phantom: {
-        browsers: ['PhantomJS'],
-        singleRun: true,
-        autoWatch: false
-      },
-    },
     jshint: {
       src: {
         files: { src: FILES.src },
         options: { jshintrc: true }
       },
-      demo: FILES.demo,
       options: { '-W069': true }
     },
     yuidoc: {
@@ -117,7 +82,7 @@ module.exports = function (grunt) {
            externs: ['externs/*.js'],
            warning_level: 'verbose',
            jscomp_off: ['fileoverviewTags'], //'checkTypes', 
-           summary_detail_level: 3,
+           summary_detail_level: 3
         },
         d32: false, // true will use 'java -client -d32 -jar compiler.jar'
         TieredCompilation: false // will use 'java -server -XX:+TieredCompilation -jar compiler.jar'
@@ -136,14 +101,6 @@ module.exports = function (grunt) {
           base: ["./", "./node_modules/freedom/"]
         }
       },
-      demo: {
-        options: {
-          port: 8000,
-          keepalive: true,
-          base: ["./", "./node_modules/freedom/"],
-          open: "http://localhost:8000/demo/"
-        }
-      },
     },
     gitinfo: {}
   });
@@ -156,7 +113,6 @@ module.exports = function (grunt) {
   grunt.loadNpmTasks('grunt-contrib-jshint');
   grunt.loadNpmTasks('grunt-contrib-yuidoc');
   grunt.loadNpmTasks('grunt-closure-tools');
-  grunt.loadNpmTasks('grunt-karma');
   
   // Default tasks.
   grunt.registerTask('build', [
@@ -164,17 +120,6 @@ module.exports = function (grunt) {
     'browserify',
     'copy:dist',
     'connect:default'
-  ]);
-  grunt.registerTask('test', [
-    'build',
-    'karma:phantom'
-  ]);
-  grunt.registerTask('debug', [
-    'build',
-    'karma:watch'
-  ]);
-  grunt.registerTask('demo', [
-    'connect:demo',
   ]);
 
   grunt.registerTask('default', ['build']);

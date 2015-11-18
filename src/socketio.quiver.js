@@ -48,7 +48,7 @@ function QuiverSocialProvider(dispatchEvent) {
   this.connections_ = {};  // server => connection
 
   // The connections in clientConnections_ and connections_ are referentially equal.
-  /** @private {!Object.<string, QuiverSocialProvider.connection_[]>} */
+  /** @private {!Object.<string, Array.<QuiverSocialProvider.connection_>>} */
   this.clientConnections_ = {};  // userId => connection[]
 
   /** @private {?QuiverSocialProvider.configuration_} */
@@ -67,8 +67,9 @@ QuiverSocialProvider.MAX_CONNECTIONS_ = 5;
  * @private @typedef {{
  *   toCounter: number,
  *   fromCounter: number,
- *   gotIntro: Object.<string, boolean> // serverUrl => true
+ *   gotIntro: Object.<string, boolean>
  * }}
+ * Note: the gotIntro object represents a set, so all values are true.
  */
 QuiverSocialProvider.clientTracker_ = undefined;
 
@@ -344,7 +345,6 @@ QuiverSocialProvider.prototype.connectAsClient = function(serverUrl, friend, inv
   }
   connection.friends.push(friend.id);
   this.clientConnections_[friend.id].push(connection);
-  socket = connection.socket;
 
   connection.ready.then(function() {
     connection.socket.emit('join', 'broadcast:' + friend.id);
@@ -352,11 +352,11 @@ QuiverSocialProvider.prototype.connectAsClient = function(serverUrl, friend, inv
     if (inviteUserData) {
       introMsg.inviteUserData = inviteUserData;
     }
-    socket.emit('emit', {
+    connection.socket.emit('emit', {
       'rooms': [friend.id],
       'msg': introMsg
     });
-    socket.emit('addDisconnectMessage', {
+    connection.socket.emit('addDisconnectMessage', {
       'rooms': [friend.id],
       'msg': {
         'cmd': 'disconnected',
