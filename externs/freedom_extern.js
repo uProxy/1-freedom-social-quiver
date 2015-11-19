@@ -2,10 +2,23 @@
 function SocialProviderInterface() {};
 
 /**
- * @param {Object} loginOptions
- * @param {function(Object, Object=)} continuation First argument is an onStatus event, send is an optional error message.
+ * @param {{userName: string, agent: string}} loginOptions
+ * @param {function((!Object|undefined), Object=)} continuation First argument is an onStatus event, send is an optional error message.
  */
 SocialProviderInterface.prototype.login = function(loginOptions, continuation) {};
+
+/**
+ * @param {string} userId
+ * @param {function({networkData:string})} continuation
+ */
+SocialProviderInterface.prototype.inviteUser = function(userId, continuation) {};
+
+/**
+ * @param {string} networkData
+ * @param {string} inviteUserData
+ * @param {function(undefined=, Object=)} continuation
+ */
+SocialProviderInterface.prototype.acceptUserInvitation = function(networkData, inviteUserData, continuation) {};
 
 SocialProviderInterface.prototype.clearCachedCredentials = function() {};
 
@@ -39,21 +52,18 @@ SocialInterface.prototype.ERRCODE;
 /** @param {!function(new:SocialProviderInterface, function())} x */
 SocialInterface.prototype.provideAsynchronous = function(x) {};
 
-/** @interface */
-function Freedom() {};
-
 /** @return {!SocialInterface} */
-Freedom.prototype.social = function() {};
+var freedom = function() {};
 
-/** @type {Freedom} */
-var freedom;
+/** @type {?function():!SocialInterface} */
+freedom.social;
 
 /** @interface */
 function FreedomWebSocket() {}
 
 /**
  * @param {string} msg
- * @param {function(...[?])} handler
+ * @param {Function} handler
  */
 FreedomWebSocket.prototype.on = function(msg, handler) {};
 

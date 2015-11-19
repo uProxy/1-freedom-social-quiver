@@ -82,7 +82,8 @@ module.exports = function (grunt) {
            externs: ['externs/*.js'],
            warning_level: 'verbose',
            jscomp_off: ['fileoverviewTags'], //'checkTypes', 
-           summary_detail_level: 3
+           summary_detail_level: 3,
+           language_in: 'ECMASCRIPT5'
         },
         d32: false, // true will use 'java -client -d32 -jar compiler.jar'
         TieredCompilation: false // will use 'java -server -XX:+TieredCompilation -jar compiler.jar'
