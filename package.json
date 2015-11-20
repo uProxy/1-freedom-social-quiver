@@ -1,22 +1,22 @@
 {
   "name": "freedom-social-quiver",
   "description": "Multi-server Social Provider",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "homepage": "",
   "bugs": {
-    "url": "http://github.com/bemasc/freedom-social-quiver/issues"
+    "url": "http://github.com/uProxy/uproxy/issues"
   },
   "contributors": [
-    "Ben Schwartz <ben@bemasc.net> (http://bemasc.net)"
+    "Ben Schwartz <bemasc@uproxy.org>"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/bemasc/freedom-social-quiver"
+    "url": "https://github.com/uProxy/freedom-social-quiver"
   },
   "main": "Gruntfile.js",
   "dependencies": {
     "debug": "0.7.4",
-    "freedom-xhr": "git://github.com/uProxy/freedom-xhr.git#master",
+    "freedom-xhr": "^0.0.6",
     "frontdomain": "^0.0.0",
     "parseuri": "^0.0.4",
     "socket.io-client": "^1.2"
@@ -43,10 +43,6 @@
     "socket.io": "^1.2"
   },
   "scripts": {
-    "prepublish": "grunt build",
-    "start": "node server/qsio_server.js",
-    "monitor": "nodemon server/qsio_server.js",
-    "deploy": "gcloud preview app deploy app.yaml",
-    "test": "grunt test --verbose"
+    "prepublish": "grunt build"
   }
 }
