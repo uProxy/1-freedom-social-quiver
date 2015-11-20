@@ -9,7 +9,7 @@ SocialProviderInterface.prototype.login = function(loginOptions, continuation) {
 
 /**
  * @param {string} userId
- * @param {function({networkData:string})} continuation
+ * @param {function(({networkData:string}|undefined), Object=)} continuation
  */
 SocialProviderInterface.prototype.inviteUser = function(userId, continuation) {};
 

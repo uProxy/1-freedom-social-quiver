@@ -92,9 +92,8 @@ QuiverSocialProvider.DEFAULT_SERVERS_ = [{
  */
 QuiverSocialProvider.invite_ = undefined;
 
-
 /** @const @private {number} */
-QuiverSocialProvider.MAX_CONNECTIONS_ = 5;
+QuiverSocialProvider.MAX_CONNECTIONS_ = 2;
 
 /**
  * @private @typedef {{
@@ -243,30 +242,69 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
       // Fulfill the method callback
       var clientState = this.makeClientState_(this.configuration_.self.id, this.clientSuffix_);
       continuation(clientState);
-
-      // Connect to friends
-      var connectedCount = 0, connectedCountGoal = 0;
-      var onClientConnection = function() {
-        ++connectedCount;
-        if (connectedCount === connectedCountGoal) {
-          this.sendAllRosterChanged_();
-        }
-      }.bind(this);
-      for (var userId in this.configuration_.friends) {
-        var friend = this.configuration_.friends[userId];
-        for (var serverKey in friend.servers) {
-          ++connectedCountGoal;
-          var friendServer = friend.servers[serverKey];
-          this.connectAsClient_(friendServer, friend, null, onClientConnection);
-        }
-      }
+      this.sendAllRosterChanged_();
     }.bind(this);
 
-    for (var serverKey in this.configuration_.self.servers) {
-      var myServer = this.configuration_.self.servers[serverKey];
-      this.connectAsOwner_(myServer, finishLogin);
-    }
+    var connectToFriends = function() {
+      var onConnectionFailure = function(friend) {
+        console.warn('Failed to connect to friend: ' + JSON.stringify(friend));
+      };
+
+      // Connect to friends
+      /** @type {!Array.<!Promise>} */ var connectionPromises = [];
+      for (var userId in this.configuration_.friends) {
+        var friend = this.configuration_.friends[userId];
+        
+        connectionPromises.push(this.connectLoop_(friend.servers,
+            this.connectAsClient_.bind(this, friend, null)).
+                catch(onConnectionFailure.bind(this, friend)));
+      }
+      Promise.all(connectionPromises).then(finishLogin);
+    }.bind(this);
+
+    this.connectLoop_(this.configuration_.self.servers,
+        this.connectAsOwner_.bind(this)).then(connectToFriends, connectToFriends);
   }.bind(this));
+};
+
+/**
+ * Async for-loop.  Try to connect to each server, and stop once we hit the
+ * limit or run out of servers.
+ * @param {!Object.<string, !QuiverSocialProvider.server_>} servers
+ * @param {function(!QuiverSocialProvider.server_, Function)} connector
+ * @return {!Promise}
+ * @private
+ */
+QuiverSocialProvider.prototype.connectLoop_ = function(servers, connector) {
+  /** @type {Function} */ var fulfill;
+  /** @type {Function} */ var reject;
+  var promise = new Promise(function(F, R) {
+    fulfill = F;
+    reject = R;
+  });
+
+  var serverKeys = Object.keys(servers);
+  var tried = 0, connected = 0;
+  var helper = function(success, failure) {
+    if (success) {
+      ++connected;
+    }
+    if (connected === QuiverSocialProvider.MAX_CONNECTIONS_ ||
+        (tried === serverKeys.length && connected > 0)) {
+      fulfill();
+      return;
+    }
+    if (tried === serverKeys.length && connected === 0) {
+      reject('failed to connect');
+      return;
+    }
+    var server = servers[serverKeys[tried]];
+    ++tried;
+    connector(server, helper);
+  }.bind(this);
+
+  helper(undefined, undefined);
+  return promise;
 };
 
 QuiverSocialProvider.prototype.sendAllRosterChanged_ = function() {
@@ -374,7 +412,7 @@ QuiverSocialProvider.prototype.connectAsOwner_ = function(server, continuation) 
     });
 
     // Connect to self, in order to be able to send messages to my own other clients.
-    this.connectAsClient_(server, this.configuration_.self, null, continuation);
+    this.connectAsClient_(this.configuration_.self, null, server, continuation);
   }.bind(this)).catch(function(err) {
     continuation(undefined, err);
   });
@@ -396,13 +434,13 @@ QuiverSocialProvider.prototype.disconnect_ = function(server) {
 };
 
 /**
- * @param {!QuiverSocialProvider.server_} server
  * @param {!QuiverSocialProvider.userDesc_} friend
  * @param {?string} inviteUserData
+ * @param {!QuiverSocialProvider.server_} server
  * @param {Function} continuation
  * @private
  */
-QuiverSocialProvider.prototype.connectAsClient_ = function(server, friend, inviteUserData, continuation) {
+QuiverSocialProvider.prototype.connectAsClient_ = function(friend, inviteUserData, server, continuation) {
   if (!this.clientConnections_[friend.id]) {
     this.clientConnections_[friend.id] = [];
   }
@@ -437,6 +475,13 @@ QuiverSocialProvider.prototype.connectAsClient_ = function(server, friend, invit
     });
     this.changeRoster(friend.id);
     continuation();
+
+    if (this.countOwnerConnections_() < QuiverSocialProvider.MAX_CONNECTIONS_) {
+      // We're low on owner servers.  Add this one to the set, since it is
+      // evidently working.
+      this.addServer_(server);
+    }
+
   }.bind(this)).catch(function(err) {
     continuation(undefined, err);
   });
@@ -447,10 +492,10 @@ QuiverSocialProvider.prototype.connectAsClient_ = function(server, friend, invit
  * @private
  */
 QuiverSocialProvider.prototype.makeIntroMsg_ = function() {
-  var myServers = [];
-  for (var server in this.connections_) {
-    if (this.connections_[server].owner) {
-      myServers.push(server);
+  /** @type {!Array.<!QuiverSocialProvider.server_>} */ var myServers = [];
+  for (var serverKey in this.connections_) {
+    if (this.connections_[serverKey].owner) {
+      myServers.push(this.configuration_.self.servers[serverKey]);
     }
   }
   return {
@@ -464,18 +509,21 @@ QuiverSocialProvider.prototype.makeIntroMsg_ = function() {
 
 /**
  * @param {string} ignoredUserId
- * @param {function({networkData:string})} cb
+ * @param {function(({networkData:string}|undefined), Object=)} cb
  * @override
  */
 QuiverSocialProvider.prototype.inviteUser = function(ignoredUserId, cb) {
-  // TODO: Show my initial userId alongside the remote nick? Show pending
-  // invitations and allow cancellation?
+  // TODO: Show pending invitations and allow cancellation?
   this.syncConfiguration_(function() {
-    /** @type QuiverSocialProvider.server_ */
-    var server;
-    for (var serverKey in this.configuration_.self.servers) {
-      server = this.configuration_.self.servers[serverKey];
-      break;
+    /** @type {!QuiverSocialProvider.server_} */ var server;
+    for (var serverKey in this.connections_) {
+      if (this.connections_[serverKey].owner) {
+        server = this.configuration_.self.servers[serverKey];
+        break;
+      }
+    }
+    if (!server) {
+      cb(undefined, this.err('Can\'t invite without a valid connection'));
     }
     /** @type QuiverSocialProvider.invite_ */
     var invite = {
@@ -557,7 +605,7 @@ QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, nick, invi
   }
   this.syncConfiguration_(function() {
     // TODO: Connect to all servers.
-    this.connectAsClient_(servers[0], friendDesc, inviteUserData, continuation);
+    this.connectAsClient_(friendDesc, inviteUserData, servers[0], continuation);
   }.bind(this));
 };
 
@@ -755,16 +803,16 @@ QuiverSocialProvider.prototype.logout = function(continuation) {
     return;
   }
 
-  var onClose = function(server, continuation) {
-    delete this.connections_[server];
+  var onClose = function(serverKey, continuation) {
+    delete this.connections_[serverKey];
     if (this.countOwnerConnections_() === 0) {  // FIXME: O(N^2)
       continuation();
     }
   };
 
-  for (var server in this.connections_) {
-    var conn = this.connections_[server];
-    conn.socket.on("disconnect", onClose.bind(this, server, continuation));
+  for (var serverKey in this.connections_) {
+    var conn = this.connections_[serverKey];
+    conn.socket.on("disconnect", onClose.bind(this, serverKey, continuation));
     conn.socket.close();
   }
 };
