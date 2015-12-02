@@ -2,7 +2,11 @@
 /*jslint indent:2, white:true, node:true, sloppy:true, browser:true */
 
 /** @type {{coretcpsocket}} */ var freedomXhr = require('freedom-xhr');
-var xhr = freedomXhr.coretcpsocket;
+
+// Use coretcpsocket does not yet work in Firefox, however in Firefox
+// corexhr supports domain fronting.
+var xhr = navigator.userAgent.indexOf('Firefox') >= 0 ?
+   freedomXhr.corexhr : freedomXhr.coretcpsocket;
 /* jshint ignore:start */
 XMLHttpRequest = xhr;
 /* jshint ignore:end */
@@ -254,7 +258,7 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
       /** @type {!Array.<!Promise>} */ var connectionPromises = [];
       for (var userId in this.configuration_.friends) {
         var friend = this.configuration_.friends[userId];
-        
+
         connectionPromises.push(this.connectLoop_(friend.servers,
             this.connectAsClient_.bind(this, friend, null)).
                 catch(onConnectionFailure.bind(this, friend)));
@@ -435,12 +439,12 @@ QuiverSocialProvider.prototype.disconnect_ = function(server) {
 
 /**
  * @param {!QuiverSocialProvider.userDesc_} friend
- * @param {?string} inviteUserData
+ * @param {?string} inviteResponse
  * @param {!QuiverSocialProvider.server_} server
  * @param {Function} continuation
  * @private
  */
-QuiverSocialProvider.prototype.connectAsClient_ = function(friend, inviteUserData, server, continuation) {
+QuiverSocialProvider.prototype.connectAsClient_ = function(friend, inviteResponse, server, continuation) {
   if (!this.clientConnections_[friend.id]) {
     this.clientConnections_[friend.id] = [];
   }
@@ -458,8 +462,8 @@ QuiverSocialProvider.prototype.connectAsClient_ = function(friend, inviteUserDat
   connection.ready.then(function() {
     connection.socket.emit('join', 'broadcast:' + friend.id);
     var introMsg = this.makeIntroMsg_();
-    if (inviteUserData) {
-      introMsg.inviteUserData = inviteUserData;
+    if (inviteResponse) {
+      introMsg.inviteResponse = inviteResponse;
     }
     connection.socket.emit('emit', {
       'rooms': [friend.id],
@@ -566,23 +570,23 @@ QuiverSocialProvider.prototype.selfDescriptionChanged_ = function() {
 
 /**
  * @param {string} networkData
- * @param {string} inviteUserData
+ * @param {string} inviteResponse
  * @param {Function} cb
  * @override
  */
-QuiverSocialProvider.prototype.acceptUserInvitation = function(networkData, inviteUserData, cb) {
+QuiverSocialProvider.prototype.acceptUserInvitation = function(networkData, inviteResponse, cb) {
   var invite = /** QuiverSocialProvider.invite_ */ JSON.parse(networkData);
-  this.addFriend_(invite.servers, invite.userId, invite.nick, inviteUserData, cb);
+  this.addFriend_(invite.servers, invite.userId, invite.nick, inviteResponse, cb);
 };
 
 /**
  * @param {!Array.<QuiverSocialProvider.server_>} servers
  * @param {string} userId
  * @param {?string} nick
- * @param {?string} inviteUserData
+ * @param {?string} inviteResponse
  * @private
  */
-QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, nick, inviteUserData, continuation) {
+QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, nick, inviteResponse, continuation) {
   console.log('Adding Friend!', arguments);
   var friendDesc = this.configuration_.friends[userId];
   if (!friendDesc) {
@@ -605,7 +609,7 @@ QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, nick, invi
   }
   this.syncConfiguration_(function() {
     // TODO: Connect to all servers.
-    this.connectAsClient_(friendDesc, inviteUserData, servers[0], continuation);
+    this.connectAsClient_(friendDesc, inviteResponse, servers[0], continuation);
   }.bind(this));
 };
 
@@ -830,16 +834,16 @@ QuiverSocialProvider.prototype.logout = function(continuation) {
  * @private
  * @param {string} userId
  * @param {?string=} clientSuffix Optional.
- * @param {?string=} inviteUserData
+ * @param {?string=} inviteResponse
  **/
-QuiverSocialProvider.prototype.changeRoster = function(userId, clientSuffix, inviteUserData) {
+QuiverSocialProvider.prototype.changeRoster = function(userId, clientSuffix, inviteResponse) {
   var userProfile = this.makeProfile_(userId);
   this.dispatchEvent('onUserProfile', userProfile);
 
   if (clientSuffix) {
     var clientState = this.makeClientState_(userId, clientSuffix);
-    if (inviteUserData) {
-      clientState.inviteUserData = inviteUserData;
+    if (inviteResponse) {
+      clientState.inviteResponse = inviteResponse;
     }
     this.dispatchEvent('onClientState', clientState);
   } else {
@@ -913,7 +917,7 @@ QuiverSocialProvider.prototype.onMessage = function(server, msg) {
           'msg': introMsg
         });
       }
-      this.changeRoster(fromUserId, msg.fromClient, msg.inviteUserData);
+      this.changeRoster(fromUserId, msg.fromClient, msg.inviteResponse);
     }.bind(this));
   } else if (msg.cmd === 'disconnected') {
     if (this.clients_[fromUserId] &&

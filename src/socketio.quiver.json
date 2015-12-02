@@ -135,12 +135,13 @@
         "status": "string",
         "lastUpdated": "number",
         "lastSeen": "number",
-        "inviteUserData": "string"
+        "inviteResponse": "string"
       }}
     }
   },
   "permissions": [
     "core.storage",
-    "core.tcpsocket"
+    "core.tcpsocket",
+    "core.xhr"
   ]
 }
