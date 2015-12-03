@@ -15,10 +15,10 @@ SocialProviderInterface.prototype.inviteUser = function(userId, continuation) {}
 
 /**
  * @param {string} networkData
- * @param {string} inviteUserData
+ * @param {string} inviteResponse
  * @param {function(undefined=, Object=)} continuation
  */
-SocialProviderInterface.prototype.acceptUserInvitation = function(networkData, inviteUserData, continuation) {};
+SocialProviderInterface.prototype.acceptUserInvitation = function(networkData, inviteResponse, continuation) {};
 
 SocialProviderInterface.prototype.clearCachedCredentials = function() {};
 
@@ -32,7 +32,7 @@ SocialProviderInterface.prototype.getClients = function(continuation) {};
  */
 SocialProviderInterface.prototype.getUsers = function(continuation) {};
 
-/** 
+/**
  * @param {string} destination_id The userId or clientId to send to
  * @param {string} message The message to send.
  * @param {function(undefined=, Object=)} continuation Function to call once the message is sent
