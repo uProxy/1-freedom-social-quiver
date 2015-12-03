@@ -1,7 +1,7 @@
 /*globals freedom:true, XMLHttpRequest:true, DEBUG */
 /*jslint indent:2, white:true, node:true, sloppy:true, browser:true */
 
-/** @type {{coretcpsocket}} */ var freedomXhr = require('freedom-xhr');
+/** @type {{coretcpsocket, corexhr}} */ var freedomXhr = require('freedom-xhr');
 
 // Use coretcpsocket does not yet work in Firefox, however in Firefox
 // corexhr supports domain fronting.
