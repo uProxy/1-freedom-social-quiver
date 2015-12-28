@@ -318,7 +318,7 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
       if (deficit > 0) {
         /** @type {!Object<string, QuiverSocialProvider.server_>} */
         var unusedDefaultServers = {};
-            QuiverSocialProvider.DEFAULT_SERVERS_.forEach(function(server) {
+        QuiverSocialProvider.DEFAULT_SERVERS_.forEach(function(server) {
           var key = QuiverSocialProvider.serverKey_(server);
           if (!(key in this.connections_)) {
             unusedDefaultServers[key] = server;
