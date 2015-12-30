@@ -6,6 +6,12 @@
       "socketio.quiver.js"
    	]
   },
+  "dependencies": {
+    "pgp-e2e": {
+      "url": "../freedom-pgp-e2e/pgpapi.json",
+      "api": "crypto"
+    }
+  },
   "default": "social2",
   "provides": [
     "social2"

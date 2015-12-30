@@ -73,3 +73,33 @@ FreedomWebSocket.prototype.on = function(msg, handler) {};
 FreedomWebSocket.prototype.send = function(msg) {};
 
 FreedomWebSocket.prototype.close = function() {};
+
+/** @interface */
+function FreedomPgp() {};
+
+/**
+ * @param {string} passphrase
+ * @param {string} uid
+ * @return {!Promise<void>}
+ */
+FreedomPgp.prototype.setup = function(passphrase, uid) {}
+
+/**
+ * @return {!Promise<{key: string, fingerprint: string, words: Array<string>}>}
+ */
+FreedomPgp.prototype.exportKey = function() {}
+
+/**
+ * @param {!ArrayBuffer} plainText
+ * @param {string} pubKey
+ * @return {!Promise<!ArrayBuffer>}
+ */
+FreedomPgp.prototype.signEncrypt = function(plainText, pubKey) {}
+
+/**
+ * @param {!ArrayBuffer} cipherText
+ * @param {string} pubKey
+ * @return {!Promise<{data: !ArrayBuffer, signedBy: Array<string>}>}
+ */
+FreedomPgp.prototype.verifyDecrypt = function(cipherText, pubKey) {}
+

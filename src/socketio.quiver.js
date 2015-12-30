@@ -17,6 +17,9 @@ if (typeof window !== 'undefined') {
 /** @type {SocketIO} */ var io = require('socket.io-client');
 /** @type {FrontDomain} */ var frontdomain = require('frontdomain');
 
+var textEncoder = new TextEncoder('utf-8');
+var textDecoder = new TextDecoder('utf-8');
+
 /**
  * Implementation of a Social provider that depends on
  * the socket.io server code in server/qsio_server.js
@@ -39,6 +42,16 @@ if (typeof window !== 'undefined') {
 function QuiverSocialProvider(dispatchEvent) {
   this.dispatchEvent = dispatchEvent;
   this.storage = freedom['core.storage']();
+
+  /** @private @const {!FreedomPgp} */
+  this.pgp_ = freedom['pgp-e2e']();
+
+  /** @type {!Promise<string>} */
+  this.pubKey_ = this.pgp_.setup('', '<quiver>').then(function() {
+    return this.pgp_.exportKey();
+  }.bind(this)).then(function(keyStruct) {
+    return keyStruct.key;
+  }.bind(this));
 
   /** @private {string} */
   this.clientSuffix_;  // jshint ignore:line
@@ -108,7 +121,7 @@ QuiverSocialProvider.DEFAULT_SERVERS_ = [{
 
 /**
  * @private @typedef {{
- *   servers: !Object.<string, !QuiverSocialProvider.server_>,
+ *   servers: !Array<!QuiverSocialProvider.server_>,
  *   userId: string,
  *   nick: ?string
  * }}
@@ -177,8 +190,8 @@ QuiverSocialProvider.shuffle_ = function(list, opt_sampleSize) {
   return tagged.slice(0, size).map(function(x) { return x[1]; });
 };
 
-/** @return {!QuiverSocialProvider.configuration_} */
-QuiverSocialProvider.makeDefaultConfiguration_ = function() {
+/** @return {!Promise<!QuiverSocialProvider.configuration_>} */
+QuiverSocialProvider.prototype.makeDefaultConfiguration_ = function() {
   var selectedServers = QuiverSocialProvider.shuffle_(
       QuiverSocialProvider.DEFAULT_SERVERS_,
       QuiverSocialProvider.MAX_CONNECTIONS_);
@@ -188,14 +201,16 @@ QuiverSocialProvider.makeDefaultConfiguration_ = function() {
     var serverKey = QuiverSocialProvider.serverKey_(server);
     defaultServers[serverKey] = server;
   });
-  return {
-    self: {
-      id: String(Math.random()),  // TODO(bemasc): Make this an EC pubkey.
-      nick: null,
-      servers: defaultServers
-    },
-    friends: {}
-  };
+  return this.pubKey_.then(function(key) {
+    return {
+      self: {
+        id: key,
+        nick: null,
+        servers: defaultServers
+      },
+      friends: {}
+    };
+  });
 };
 
 /**
@@ -212,8 +227,12 @@ QuiverSocialProvider.prototype.syncConfiguration_ = function(continuation) {
       this.configuration_ = /** @type {QuiverSocialProvider.configuration_} */ (JSON.parse(result));
       continuation();
     } else if (!this.configuration_) {
-      this.configuration_ = QuiverSocialProvider.makeDefaultConfiguration_();
-      this.syncConfiguration_(continuation);
+      this.makeDefaultConfiguration_().then(function(config) {
+        if (!this.configuration_) {
+          this.configuration_ = config;
+        }
+        this.syncConfiguration_(continuation);
+      }.bind(this));
     }
   }.bind(this));
 };
@@ -244,7 +263,7 @@ QuiverSocialProvider.count_ = function(obj) {
 };
 
 QuiverSocialProvider.prototype.getClientId_ = function() {
-  return this.configuration_.self.id + ':' + this.clientSuffix_;
+  return this.configuration_.self.id + '#' + this.clientSuffix_;
 };
 
 /** @override */
@@ -312,8 +331,10 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
     // The server connection heuristic is currently a three-step process.
     // Step 1: Connect to my own long-term servers as an owner (i.e. listening
     // for messages from friends).
-    this.connectLoop_(this.configuration_.self.servers,
-        this.connectAsOwner_.bind(this)).then(function(results) {
+    this.pubKey_.then(function() {
+      return this.connectLoop_(this.configuration_.self.servers,
+          this.connectAsOwner_.bind(this));
+    }.bind(this)).then(function(results) {
       if (results.succeeded.length > 0) {
         // If at least one connection succeeded, then we do have a working
         // network, so any connection failures are because the server is in fact
@@ -491,7 +512,7 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
     reject(err);
   }.bind(this));
 
-  socket.on("message", this.onMessage.bind(this, server));
+  socket.on("message", this.onEncryptedMessage_.bind(this, server));
   socket.on("reconnect_failed", function(msg) {
     this.disconnect_(server);
     reject(new Error('Never connected to ' + serverUrl));
@@ -520,9 +541,16 @@ QuiverSocialProvider.prototype.connectAsOwner_ = function(server, continuation) 
     this.addServer_(server);
 
     connection.socket.emit('join', this.configuration_.self.id);
+    // TODO: Sign this message.  Currently, the pgp-e2e module does not support
+    // signing without encryption.  The lack of verification enables a kind of
+    // application-layer reflection/amplification "attack", by forging pings to
+    // a user's friends to trigger intro responses.
     connection.socket.emit('emit', {
       room: 'broadcast:' + this.configuration_.self.id,
-      msg: this.makeIntroMsg_()
+      msg: {
+        cmd: 'ping',
+        from: this.configuration_.self.id
+      }
     });
 
     // Connect to self, in order to be able to send messages to my own other clients.
@@ -583,18 +611,13 @@ QuiverSocialProvider.prototype.connectAsClient_ = function(friend, inviteRespons
     if (inviteResponse) {
       introMsg.inviteResponse = inviteResponse;
     }
-    connection.socket.emit('emit', {
-      'room': friend.id,
-      'msg': introMsg
-    });
-    connection.socket.emit('addDisconnectMessage', {
-      'room': friend.id,
-      'msg': {
-        'cmd': 'disconnected',
-        'from': this.configuration_.self.id,
-        'fromClient': this.clientSuffix_
-      }
-    });
+    this.emitEncrypted_(connection.socket, friend.id, introMsg);
+
+    var disconnectMessage = {
+      'cmd': 'disconnected',
+      'fromClient': this.clientSuffix_
+    };
+    this.emitEncrypted_(connection.socket, friend.id, disconnectMessage, true);
     this.changeRoster(friend.id);
     continuation();
 
@@ -622,7 +645,6 @@ QuiverSocialProvider.prototype.makeIntroMsg_ = function() {
   }
   return {
     cmd: "intro",
-    from: this.configuration_.self.id,
     servers: myServers,
     nick: this.configuration_.self.nick,
     fromClient: this.clientSuffix_
@@ -684,10 +706,7 @@ QuiverSocialProvider.prototype.selfDescriptionChanged_ = function() {
     for (var i = 0; i < connections.length; ++i) {
       var connection = connections[i];
       var introMsg = this.makeIntroMsg_();
-      connection.socket.emit('emit', {
-        'room': userId,
-        'msg': introMsg
-      });
+      this.emitEncrypted_(connection.socket, userId, introMsg);
     }
   }
 };
@@ -717,7 +736,7 @@ QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, nick, invi
     friendDesc = {
       id: userId,
       nick: null,
-      servers: []
+      servers: {}
     };
     this.configuration_.friends[userId] = friendDesc;
   }
@@ -830,7 +849,7 @@ QuiverSocialProvider.prototype.makeClientState_ = function(userId, clientSuffix,
   isOnline = opt_forceOnline || isOnline;
   return {
     userId: userId,
-    clientId: userId + ':' + clientSuffix,
+    clientId: userId + '#' + clientSuffix,
     status: isOnline ? 'ONLINE' : 'OFFLINE',
     lastUpdated: Date.now(),  // TODO
     lastSeen: Date.now()  // TODO
@@ -879,13 +898,13 @@ QuiverSocialProvider.prototype.sendMessage = function(to, msg, continuation) {
   }
 
   var userId, clientSuffix;
-  var colonPoint = to.indexOf(':');
-  if (colonPoint == -1) {
+  var breakPoint = to.indexOf('#');
+  if (breakPoint === -1) {
     userId = to;
     clientSuffix = null;
   } else {
-    userId = to.slice(0, colonPoint);
-    clientSuffix = to.slice(colonPoint + 1);
+    userId = to.slice(0, breakPoint);
+    clientSuffix = to.slice(breakPoint + 1);
   }
 
   if (this.countOwnerConnections_() === 0) {
@@ -914,19 +933,51 @@ QuiverSocialProvider.prototype.sendMessage = function(to, msg, continuation) {
   }
 
   this.clientConnections_[userId].forEach(function(connection) {
-    connection.socket.emit('emit', {
-      room: userId,
-      msg: {
-        cmd: 'msg',
-        msg: msg,
-        from: this.configuration_.self.id,
-        index: index,  // For de-duplication across paths.
-        fromClient: this.clientSuffix_,
-        toClient: clientSuffix  // null for broadcast
-      }
+    this.emitEncrypted_(connection.socket, userId, {
+      cmd: 'msg',
+      msg: msg,
+      index: index,  // For de-duplication across paths.
+      fromClient: this.clientSuffix_,
+      toClient: clientSuffix  // null for broadcast
     });
   }.bind(this));
   continuation();
+};
+
+/**
+ * @param {Socket} socket
+ * @param {string} userId
+ * @param {*} msg JSON-ifiable message
+ * @param {boolean=} opt_disconnect Delay the message until I disconnect
+ * @private
+ */
+QuiverSocialProvider.prototype.emitEncrypted_ = function(socket, userId, msg,
+    opt_disconnect) {
+  if (!socket) {
+    console.error('BUG: Tried to send on null socket');
+    return;
+  }
+
+  if (!msg) {
+    msg = null;
+  }
+  var msgString = JSON.stringify(msg);
+  var msgBuffer = textEncoder.encode(msgString).buffer;
+  // userId is also required to be a valid public key
+  this.pgp_.signEncrypt(msgBuffer, userId).then(function(cipherData) {
+    console.log('Encrypted ' + cipherData.byteLength);
+    // cipherData is an ArrayBuffer.  socket.io supports sending ArrayBuffers.
+    var verb = opt_disconnect ? 'addDisconnectMessage' : 'emit';
+    socket.emit(verb, {
+      room: userId,
+      msg: {
+        from: this.configuration_.self.id,
+        cipherText: cipherData
+      }
+    });
+  }.bind(this)).catch(function(e) {
+    console.warn('Encryption failed:', e);
+  });
 };
 
 /**
@@ -990,22 +1041,57 @@ QuiverSocialProvider.prototype.changeRoster = function(userId, clientSuffix, inv
 };
 
 /**
- * Interpret messages from the server to this as owner.
+ * @private
+ * @param {!QuiverSocialProvider.server_} server The server through which the message was delivered
+ * @param {Object} msg Encrypted message from the server
+ **/
+QuiverSocialProvider.prototype.onEncryptedMessage_ = function(server, msg) {
+  if (!msg) {
+    return;
+  }
+
+  if (msg.cmd === 'ping') {  // TODO: Better name than ping for a broadcast
+    // Only pings are allowed to go unencrypted.
+    // Reply to the ping with an encrypted intro msg.
+    if (this.configuration_.friends[msg.from]) {
+      var serverKey = QuiverSocialProvider.serverKey_(server);
+      var introMsg = this.makeIntroMsg_();
+      this.emitEncrypted_(this.connections_[serverKey].socket, msg.from,
+          introMsg);
+    }
+    return;
+  }
+
+  console.log('Decrypting ' + msg.cipherText.byteLength);
+  this.pgp_.verifyDecrypt(msg.cipherText, msg.from).then(function(plain) {
+    var text = textDecoder.decode(plain.data);
+    var obj = JSON.parse(text);
+    console.log('Decrypted message:', obj);
+    this.onMessage(server, obj, msg.from);
+  }.bind(this)).catch(function(e) {
+    console.warn('Decryption failed:', e);
+  });
+};
+
+/**
+ * Interpret decrypted messages from another user.
  * There are 3 types of messages
- * - Directed messages from endpoints (message)
- * - State information from the server on initialization (state)
- * - Roster change events (users go online/offline) (roster)
+ * - Application messages (msg)
+ * - Introduction/state update message (intro)
+ * - Disconnection messages (disconnected)
  *
  * @method onMessage
  * @private
  * @param {!QuiverSocialProvider.server_} server The server through which the message was delivered
- * @param {!Object} msg Message from the server (see server/qsio_server.js for schema)
- * @return nothing
+ * @param {*} msg Message from the server
+ * @param {string} fromUserId
  **/
-QuiverSocialProvider.prototype.onMessage = function(server, msg) {
+QuiverSocialProvider.prototype.onMessage = function(server, msg, fromUserId) {
+  if (!msg) {
+    return;
+  }
   // TODO: Keep track of which message came through which server
   var serverKey = QuiverSocialProvider.serverKey_(server);
-  var fromUserId = msg.from;
   if (msg.cmd === 'msg') {
     if (!(fromUserId in this.configuration_.friends) && fromUserId != this.configuration_.self.id) {
       return;  // Don't accept messages from unknown parties.
@@ -1047,10 +1133,8 @@ QuiverSocialProvider.prototype.onMessage = function(server, msg) {
         // TODO: Can this be removed now that we have a "broadcast:" room?
         var friend = this.configuration_.friends[fromUserId];
         var introMsg = this.makeIntroMsg_();
-        this.connections_[serverKey].socket.emit('emit', {
-          'room': friend.id,
-          'msg': introMsg
-        });
+        this.emitEncrypted_(this.connections_[serverKey].socket, friend.id,
+            introMsg);
       }
       this.changeRoster(fromUserId, msg.fromClient, msg.inviteResponse);
     }.bind(this));
