@@ -411,7 +411,7 @@ QuiverSocialProvider.prototype.connectAsOwner_ = function(server, continuation) 
   connection.ready.then(function() {
     connection.socket.emit('join', this.configuration_.self.id);
     connection.socket.emit('emit', {
-      rooms: ['broadcast:' + this.configuration_.self.id],
+      room: 'broadcast:' + this.configuration_.self.id,
       msg: this.makeIntroMsg_()
     });
 
@@ -466,11 +466,11 @@ QuiverSocialProvider.prototype.connectAsClient_ = function(friend, inviteRespons
       introMsg.inviteResponse = inviteResponse;
     }
     connection.socket.emit('emit', {
-      'rooms': [friend.id],
+      'room': friend.id,
       'msg': introMsg
     });
     connection.socket.emit('addDisconnectMessage', {
-      'rooms': [friend.id],
+      'room': friend.id,
       'msg': {
         'cmd': 'disconnected',
         'from': this.configuration_.self.id,
@@ -561,7 +561,7 @@ QuiverSocialProvider.prototype.selfDescriptionChanged_ = function() {
       var connection = connections[i];
       var introMsg = this.makeIntroMsg_();
       connection.socket.emit('emit', {
-        'rooms': [userId],
+        'room': userId,
         'msg': introMsg
       });
     }
@@ -780,7 +780,7 @@ QuiverSocialProvider.prototype.sendMessage = function(to, msg, continuation) {
 
   this.clientConnections_[userId].forEach(function(connection) {
     connection.socket.emit('emit', {
-      rooms: [userId],
+      room: userId,
       msg: {
         cmd: 'msg',
         msg: msg,
@@ -913,7 +913,7 @@ QuiverSocialProvider.prototype.onMessage = function(server, msg) {
         var friend = this.configuration_.friends[fromUserId];
         var introMsg = this.makeIntroMsg_();
         this.connections_[serverKey].socket.emit('emit', {
-          'rooms': [friend.id],
+          'room': friend.id,
           'msg': introMsg
         });
       }
