@@ -146,6 +146,7 @@
     }
   },
   "permissions": [
+    "core.crypto",
     "core.storage",
     "core.tcpsocket",
     "core.xhr"

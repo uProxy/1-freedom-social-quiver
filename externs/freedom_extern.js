@@ -75,6 +75,15 @@ FreedomWebSocket.prototype.send = function(msg) {};
 FreedomWebSocket.prototype.close = function() {};
 
 /** @interface */
+function FreedomCrypto() {};
+
+/**
+ * @param {number} numBytes
+ * @return {!Promise<!ArrayBuffer>}
+ */
+FreedomCrypto.prototype.getRandomBytes = function(numBytes) {}
+
+/** @interface */
 function FreedomPgp() {};
 
 /**
@@ -102,4 +111,3 @@ FreedomPgp.prototype.signEncrypt = function(plainText, pubKey) {}
  * @return {!Promise<{data: !ArrayBuffer, signedBy: Array<string>}>}
  */
 FreedomPgp.prototype.verifyDecrypt = function(cipherText, pubKey) {}
-
