@@ -144,7 +144,6 @@ QuiverSocialProvider.configuration_ = undefined;
  */
 QuiverSocialProvider.connection_ = undefined;
 
-
 /**
  * @param {!Array<T>} list To shuffle.  Not modified.
  * @param {number=} opt_sampleSize
@@ -233,6 +232,12 @@ QuiverSocialProvider.prototype.clearCachedCredentials = function() {
   // TODO(bemasc): What does this even mean?
 };
 
+
+/**
+ * @private {?Function}
+ */
+QuiverSocialProvider.prototype.finishLogin_ = null;
+
 /**
  * Connect to the Web Socket rendezvous server
  * e.g. social.login(Object options)
@@ -259,7 +264,8 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
 
     this.setNick_(loginOpts.userName);
 
-    var finishLogin = function() {
+    this.finishLogin_ = function() {
+      this.finishLogin_ = null;
       // Fulfill the method callback
       var clientState = this.makeClientState_(this.configuration_.self.id, this.clientSuffix_);
       continuation(clientState);
@@ -316,7 +322,11 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
         return this.connectLoop_(unusedDefaultServers,
             this.connectAsOwner_.bind(this), deficit);
       }
-    }.bind(this)).then(finishLogin);
+    }.bind(this)).then(function() {
+      if (this.finishLogin_) {
+        this.finishLogin_();
+      }
+    }.bind(this));
   }.bind(this));
 };
 
@@ -480,6 +490,10 @@ QuiverSocialProvider.prototype.connectAsOwner_ = function(server, continuation) 
 
     // Add the server to our public list of contact points.
     this.addServer_(server);
+
+    if (this.finishLogin_) {
+      this.finishLogin_();
+    }
   }.bind(this)).catch(function(err) {
     continuation(undefined, err);
   });
