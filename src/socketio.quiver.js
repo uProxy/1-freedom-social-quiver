@@ -444,7 +444,6 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
   var serverUrl = (server.scheme || 'https') + '://' + domain;
   var socket = io.connect(serverUrl, connectOptions);
   var resolve, reject;
-  var everConnected = false;
   this.connections_[serverKey] = {
     socket: socket,
     ready: new Promise(function(F, R) {
@@ -454,19 +453,16 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
     owner: false,
     friends: []
   };
-  socket.on("connect", function() {
-    everConnected = true;
-    resolve();  // FIXME for breakpoint.
-  });
+  socket.on("connect", resolve);
 
   socket.on("error", function(err) {
-    if (!everConnected) {
-      console.log('Failed to connect to ' + serverUrl);
-      this.disconnect_(server);
-      reject(err);
-    } else {
-      console.log('Ignoring socket.io error: ' + err);
-    }
+    console.log('Ignoring socket.io error: ' + err);
+  }.bind(this));
+
+  socket.on("connect_error", function(err) {
+    console.log('Failed to connect to ' + serverUrl);
+    this.disconnect_(server);
+    reject(err);
   }.bind(this));
 
   socket.on("message", this.onMessage.bind(this, server));
