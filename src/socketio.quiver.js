@@ -324,6 +324,13 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
       }
     }.bind(this)).then(function() {
       if (this.finishLogin_) {
+        console.warn('All server connection attempts failed!');
+        // Arguably, we should report failure, not success at this point.
+        // However, the only way for the user to get back to a working state is
+        // to accept an invitation that includes a new (working) server, and
+        // they can't do that unless login has succeeded.
+        // TODO: Report failure once Quiver and application code allow us to
+        // process invitations without being logged in.
         this.finishLogin_();
       }
     }.bind(this));
