@@ -465,6 +465,7 @@ QuiverSocialProvider.prototype.connectAsOwner_ = function(server, continuation) 
   var connection = this.connect_(server);
   if (connection.owner) {
     // Already connected as owner.
+    connection.ready.then(continuation, continuation.bind(this, null));
     return;
   }
   connection.owner = true;
@@ -517,7 +518,7 @@ QuiverSocialProvider.prototype.connectAsClient_ = function(friend, inviteRespons
 
   if (connection.friends.indexOf(friend.id) !== -1) {
     // Already connected as client.
-    connection.ready.then(continuation);
+    connection.ready.then(continuation, continuation.bind(this, null));
     return;
   }
   connection.friends.push(friend.id);
