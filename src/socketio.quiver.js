@@ -375,19 +375,20 @@ QuiverSocialProvider.prototype.connectLoop_ = function(servers, connector,
   var succeeded = [];
   /** @type {!Array<!QuiverSocialProvider.server_>} */
   var failed = [];
-  var helper = function(success, failure) {
-    if (success) {
-      succeeded.push(servers[serverKeys[tried - 1]]);
-    } else if (failure) {
-      failed.push(servers[serverKeys[tried - 1]]);
+  var helper = function(retval, failure) {
+    var lastServer = servers[serverKeys[tried - 1]];
+    if (failure) {
+      failed.push(lastServer);
+    } else {
+      succeeded.push(lastServer);
     }
     if (succeeded.length === limit || tried === serverKeys.length) {
       fulfill({succeeded: succeeded, failed: failed});
       return;
     }
-    var server = servers[serverKeys[tried]];
+    var nextServer = servers[serverKeys[tried]];
     ++tried;
-    connector(server, helper);
+    connector(nextServer, helper);
   }.bind(this);
 
   helper(undefined, undefined);
