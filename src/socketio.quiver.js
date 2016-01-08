@@ -442,6 +442,7 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
 
   socket.on("connect_error", function(err) {
     console.log('Failed to connect to ' + serverUrl);
+    socket.close();
     this.disconnect_(server);
     reject(err);
   }.bind(this));
