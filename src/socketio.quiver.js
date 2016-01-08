@@ -144,43 +144,23 @@ QuiverSocialProvider.configuration_ = undefined;
  */
 QuiverSocialProvider.connection_ = undefined;
 
-/**
- * @param {!Array<T>} list To sample from
- * @param {number} k Target number of samples
- * @return {!Array<T>} Subset of |list|
- * @template T
- */
-QuiverSocialProvider.randomSample_ = function(list, k) {
-  if (k >= list.length) {
-    return list;
-  }
-
-  // Algorithm R: https://en.wikipedia.org/wiki/Reservoir_sampling#Algorithm_R
-  var sample = list.slice(0, k);
-  for (var i = k; i < list.length; ++i) {
-    var j = Math.floor(Math.random() * i);
-    if (j < k) {
-      sample[j] = list[i];
-    }
-  }
-
-  return sample;
-};
 
 /**
- * @param {!Array<T>} list To shuffle
- * @return {!Array<T>} Shuffled copy of list
+ * @param {!Array<T>} list To shuffle.  Not modified.
+ * @param {number=} opt_sampleSize
+ * @return {!Array<T>} Shuffled copy of list, truncated to opt_sampleSize
  * @template T
  */
-QuiverSocialProvider.shuffle_ = function(list) {
+QuiverSocialProvider.shuffle_ = function(list, opt_sampleSize) {
+  var size = opt_sampleSize || list.length;
   var tagged = list.map(function(x) { return [Math.random(), x]; });
   tagged.sort(function(a, b) { return a[0] - b[0]; });
-  return tagged.map(function(x) { return x[1]; });
+  return tagged.slice(0, size).map(function(x) { return x[1]; });
 };
 
 /** @return {!QuiverSocialProvider.configuration_} */
 QuiverSocialProvider.makeDefaultConfiguration_ = function() {
-  var selectedServers = QuiverSocialProvider.randomSample_(
+  var selectedServers = QuiverSocialProvider.shuffle_(
       QuiverSocialProvider.DEFAULT_SERVERS_,
       QuiverSocialProvider.MAX_CONNECTIONS_);
   /** @type {!Object.<string, QuiverSocialProvider.server_> } */
