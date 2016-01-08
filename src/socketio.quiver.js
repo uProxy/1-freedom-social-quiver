@@ -303,7 +303,7 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
       return Promise.all(connectionPromises);
     }.bind(this);
 
-    // The server connection heuristic is currently a three-step process
+    // The server connection heuristic is currently a three-step process.
     // Step 1: Connect to my own long-term servers as an owner (i.e. listening
     // for messages from friends).
     this.connectLoop_(this.configuration_.self.servers,
@@ -316,7 +316,7 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
         results.failed.forEach(this.removeServer_, this);
       }
       // Step 2: Connect to friends.  If I don't have MAX_CONNECTIONS long-term
-      // servers of my own, I will adopy the first new server(s) to which I
+      // servers of my own, I will adopt the first new server(s) to which I
       // connect during this process as long-term servers.
       return connectToFriends();
     }.bind(this)).then(function() {
