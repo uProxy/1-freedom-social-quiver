@@ -303,6 +303,9 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
       return Promise.all(connectionPromises);
     }.bind(this);
 
+    // The server connection heuristic is currently a three-step process
+    // Step 1: Connect to my own long-term servers as an owner (i.e. listening
+    // for messages from friends).
     this.connectLoop_(this.configuration_.self.servers,
         this.connectAsOwner_.bind(this)).then(function(results) {
       if (results.succeeded.length > 0) {
@@ -312,9 +315,15 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
         // It will then be replaced by a friend's server.
         results.failed.forEach(this.removeServer_, this);
       }
+      // Step 2: Connect to friends.  If I don't have MAX_CONNECTIONS long-term
+      // servers of my own, I will adopy the first new server(s) to which I
+      // connect during this process as long-term servers.
       return connectToFriends();
     }.bind(this)).then(function() {
       var deficit = QuiverSocialProvider.MAX_CONNECTIONS_ - this.countOwnerConnections_();
+      // Step 3: If, after the above completes, I still have too few servers,
+      // I will retry all the default servers, and add them to the long-term
+      // set until I have MAX_CONNECTIONS servers or run out of default servers.
       if (deficit > 0) {
         /** @type {!Object<string, QuiverSocialProvider.server_>} */
         var unusedDefaultServers = {};
