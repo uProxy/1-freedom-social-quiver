@@ -493,9 +493,13 @@ QuiverSocialProvider.prototype.connectAsOwner_ = function(server, continuation) 
  */
 QuiverSocialProvider.prototype.disconnect_ = function(server) {
   var serverKey = QuiverSocialProvider.serverKey_(server);
-  this.connections_[serverKey].owner = false;
-  if (this.connections_[serverKey].friends.length === 0) {
-    delete this.connections_[serverKey];
+  if (this.connections_[serverKey]) {
+    this.connections_[serverKey].owner = false;
+    if (this.connections_[serverKey].friends.length === 0) {
+      delete this.connections_[serverKey];
+    }
+  } else {
+    console.warn('Disconnect called for unknown server: ', server);
   }
   if (this.countOwnerConnections_() === 0) {
     this.sendAllRosterChanged_();
