@@ -359,36 +359,43 @@ QuiverSocialProvider.prototype.connectLoop_ = function(servers, connector,
     opt_limit) {
   var limit = opt_limit || QuiverSocialProvider.MAX_CONNECTIONS_;
 
-  /** @type {Function} */ var fulfill;
-  /** @type {Function} */ var reject;
+  /** @type {function(!QuiverSocialProvider.connectLoopResults_)} */
+  var fulfill;
   var promise = new Promise(function(F, R) {
     fulfill = F;
-    reject = R;
   });
 
-  var serverKeys = QuiverSocialProvider.shuffle_(Object.keys(servers));
-  var tried = 0;
   /** @type {!Array<!QuiverSocialProvider.server_>} */
   var succeeded = [];
   /** @type {!Array<!QuiverSocialProvider.server_>} */
   var failed = [];
+
+  // Bail out early if there's no work to do.
+  var serverKeys = QuiverSocialProvider.shuffle_(Object.keys(servers));
+  if (limit === 0 || serverKeys.length === 0) {
+    fulfill({succeeded: succeeded, failed: failed});
+    return promise;
+  }
+
+  var serverIndex = 0;
   var helper = function(retval, failure) {
-    var lastServer = servers[serverKeys[tried - 1]];
+    // Due to connector's calling convention, retval is always undefined.
+    var lastServer = servers[serverKeys[serverIndex]];
     if (failure) {
       failed.push(lastServer);
     } else {
       succeeded.push(lastServer);
     }
-    if (succeeded.length === limit || tried === serverKeys.length) {
+    ++serverIndex;
+    if (succeeded.length === limit || serverIndex === serverKeys.length) {
       fulfill({succeeded: succeeded, failed: failed});
       return;
     }
-    var nextServer = servers[serverKeys[tried]];
-    ++tried;
+    var nextServer = servers[serverKeys[serverIndex]];
     connector(nextServer, helper);
   }.bind(this);
+  connector(servers[serverKeys[0]], helper);
 
-  helper(undefined, undefined);
   return promise;
 };
 
