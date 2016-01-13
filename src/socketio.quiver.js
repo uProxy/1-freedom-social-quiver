@@ -616,14 +616,22 @@ QuiverSocialProvider.prototype.makeIntroMsg_ = function() {
  */
 QuiverSocialProvider.prototype.inviteUser = function(ignoredUserId, cb) {
   // TODO: Show pending invitations and allow cancellation?
+
+  // This implements Promise.race() except that rejections are ignored.
+  /** @type {function(string)} */ var serverIsReady;
+  /** @type {!Promise<string>} */
+  var ownerRace = new Promise(function(F, R) { serverIsReady = F; });
   this.syncConfiguration_(function() {
     /** @type {!QuiverSocialProvider.server_} */ var server;
     for (var serverKey in this.connections_) {
-      if (this.connections_[serverKey].owner) {
-        server = this.configuration_.self.servers[serverKey];
-        break;
+      var connection = this.connections_[serverKey];
+      if (connection.owner) {
+        connection.ready.then(serverIsReady.bind(this, serverKey));
       }
     }
+  }.bind(this));
+  ownerRace.then(function(serverKey) {
+    var server = this.configuration_.self.servers[serverKey];
     if (!server) {
       cb(undefined, this.err('Can\'t invite without a valid connection'));
     }
@@ -636,8 +644,6 @@ QuiverSocialProvider.prototype.inviteUser = function(ignoredUserId, cb) {
     cb({networkData: JSON.stringify(invite)});
   }.bind(this));
 };
-
-
 
 /**
  * @param {string} nick
