@@ -50,7 +50,7 @@ function QuiverSocialProvider(dispatchEvent) {
   this.pgp_ = freedom['pgp-e2e']();
 
   /** @type {!Promise<string>} */
-  this.pubKey_ = this.pgp_.setup('', '<quiver>').then(function() {
+  this.getPubKey_ = this.pgp_.setup('', '<quiver>').then(function() {
     return this.pgp_.exportKey();
   }.bind(this)).then(function(keyStruct) {
     return keyStruct.key;
@@ -160,6 +160,7 @@ QuiverSocialProvider.makeClientTracker_ = function() {
  *   servers: !Object.<string, QuiverSocialProvider.server_>,
  *   knockCodes: !Array.<string>
  * }}
+ * knockCodes are codes received from this user in out-of-band invites.
  */
 QuiverSocialProvider.userDesc_ = undefined;
 
@@ -206,7 +207,7 @@ QuiverSocialProvider.prototype.makeDefaultConfiguration_ = function() {
     var serverKey = QuiverSocialProvider.serverKey_(server);
     defaultServers[serverKey] = server;
   });
-  return this.pubKey_.then(function(key) {
+  return this.getPubKey_.then(function(key) {
     return {
       self: {
         id: key,
@@ -338,7 +339,7 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
     // The server connection heuristic is currently a three-step process.
     // Step 1: Connect to my own long-term servers as an owner (i.e. listening
     // for messages from friends).
-    this.pubKey_.then(function() {
+    this.getPubKey_.then(function() {
       return this.connectLoop_(this.configuration_.self.servers,
           this.connectAsOwner_.bind(this));
     }.bind(this)).then(function(results) {
@@ -548,6 +549,12 @@ QuiverSocialProvider.prototype.connectAsOwner_ = function(server, continuation) 
     this.addServer_(server);
 
     connection.socket.emit('join', this.configuration_.self.id);
+    // Emit an unencrypted ping on the broadcast channel, so that everyone can
+    // see that I have come online.  This ping is not encrypted because it is
+    // being sent to all of my friends, including newly invited friends whose
+    // user IDs I do not yet know.  This is safe because the ping contains no
+    // sensitive information.
+    //
     // TODO: Sign this message.  Currently, the pgp-e2e module does not support
     // signing without encryption.  The lack of verification enables a kind of
     // application-layer reflection/amplification "attack", by forging pings to
@@ -687,6 +694,11 @@ QuiverSocialProvider.prototype.inviteUser = function(ignoredUserId, cb) {
       cb(undefined, this.err('Can\'t invite without a valid connection'));
     }
 
+    // Get a knock code.  This code is used to ensure that we only ever send an
+    // 'intro' message to people who have received an invite.  This is required
+    // because the 'intro' message contains the nick (which might reveal the
+    // user's real identity) and the server list (which must be kept secret to
+    // prevent an attacker from learning all the servers on the network).
     // 16 bytes is the standard for collision avoidance in a UUID.
     this.crypto_.getRandomBytes(16).then(function(buffer) {
       var knockCode = btoa(String.fromCharCode.apply(null,
@@ -742,7 +754,7 @@ QuiverSocialProvider.prototype.acceptUserInvitation = function(networkData, invi
 /**
  * @param {!Array.<QuiverSocialProvider.server_>} servers
  * @param {string} userId
- * @param {!Array.<string>} knockCodes
+ * @param {!Array.<string>} knockCodes Only nonempty when processing an invite
  * @param {?string} nick
  * @param {?string} inviteResponse
  * @private
@@ -770,8 +782,6 @@ QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, knockCodes
     if (friendDesc.knockCodes.indexOf(knockCodes[i]) === -1) {
       friendDesc.knockCodes.push(knockCodes[i]);
     }
-
-    // TODO: Remove this code from liveKnockCodes if the code is single-use.
   }
   if (nick) {
     friendDesc.nick = nick;
@@ -1085,6 +1095,8 @@ QuiverSocialProvider.prototype.onEncryptedMessage_ = function(server, msg) {
       var introMsg = this.makeIntroMsg_(friendDesc);
       this.emitEncrypted_(this.connections_[serverKey].socket, msg.from,
           introMsg);
+    } else {
+      console.warn('Ignored ping from a stranger:', msg.from);
     }
     return;
   }
@@ -1148,7 +1160,9 @@ QuiverSocialProvider.prototype.onMessage = function(server, msg, fromUserId) {
       if (!this.clients_[fromUserId][msg.fromClient]) {
         this.clients_[fromUserId][msg.fromClient] = QuiverSocialProvider.makeClientTracker_();
       }
-      this.addFriend_(msg.servers, fromUserId, msg.knockCodes || [], msg.nick, null, function() {
+      this.addFriend_(msg.servers, fromUserId, [], msg.nick, null, function() {
+        // TODO: Remove each code in msg.knockCodes from liveKnockCodes if it is
+        // limited to a single user.
         var gotIntro = this.clients_[fromUserId][msg.fromClient].gotIntro;
         if (!gotIntro[serverKey]) {
           gotIntro[serverKey] = true;
