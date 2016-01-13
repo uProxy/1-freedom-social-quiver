@@ -495,6 +495,10 @@ QuiverSocialProvider.prototype.connectAsOwner_ = function(server, continuation) 
   connection.owner = true;
 
   connection.ready.then(function() {
+    // Add the server to our public list of contact points.
+    // This must be done before any calls to |makeIntroMsg_|.
+    this.addServer_(server);
+
     connection.socket.emit('join', this.configuration_.self.id);
     connection.socket.emit('emit', {
       room: 'broadcast:' + this.configuration_.self.id,
@@ -503,9 +507,6 @@ QuiverSocialProvider.prototype.connectAsOwner_ = function(server, continuation) 
 
     // Connect to self, in order to be able to send messages to my own other clients.
     this.connectAsClient_(this.configuration_.self, null, server, continuation);
-
-    // Add the server to our public list of contact points.
-    this.addServer_(server);
 
     if (this.finishLogin_) {
       this.finishLogin_();
@@ -594,8 +595,8 @@ QuiverSocialProvider.prototype.connectAsClient_ = function(friend, inviteRespons
  */
 QuiverSocialProvider.prototype.makeIntroMsg_ = function() {
   /** @type {!Array.<!QuiverSocialProvider.server_>} */ var myServers = [];
-  for (var serverKey in this.connections_) {
-    if (this.connections_[serverKey].owner) {
+  for (var serverKey in this.configuration_.self.servers) {
+    if (this.connections_[serverKey] && this.connections_[serverKey].owner) {
       myServers.push(this.configuration_.self.servers[serverKey]);
     }
   }
