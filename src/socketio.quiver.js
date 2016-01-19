@@ -337,8 +337,8 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
     }.bind(this);
 
     // The server connection heuristic is currently a three-step process.
-    // Step 1: Connect to my own long-term servers as an owner (i.e. listening
-    // for messages from friends).
+    // Step 1: Once I know my own public key, connect to my own long-term
+    // servers as an owner (i.e. listening for messages from friends).
     this.getPubKey_.then(function() {
       return this.connectLoop_(this.configuration_.self.servers,
           this.connectAsOwner_.bind(this));
@@ -1113,10 +1113,10 @@ QuiverSocialProvider.prototype.onEncryptedMessage_ = function(server, msg) {
 
 /**
  * Interpret decrypted messages from another user.
- * There are 3 types of messages
- * - Application messages (msg)
- * - Introduction/state update message (intro)
- * - Disconnection messages (disconnected)
+ * There are 3 types of commands in these messages
+ * - Application message comands (msg)
+ * - Introduction/state update commands (intro)
+ * - Disconnection commands (disconnected)
  *
  * @method onMessage
  * @private
