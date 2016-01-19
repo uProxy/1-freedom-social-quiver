@@ -144,11 +144,27 @@ QuiverSocialProvider.configuration_ = undefined;
  */
 QuiverSocialProvider.connection_ = undefined;
 
+/**
+ * @param {!Array<T>} list To shuffle.  Not modified.
+ * @param {number=} opt_sampleSize
+ * @return {!Array<T>} Shuffled copy of list, truncated to opt_sampleSize
+ * @template T
+ */
+QuiverSocialProvider.shuffle_ = function(list, opt_sampleSize) {
+  var size = opt_sampleSize || list.length;
+  var tagged = list.map(function(x) { return [Math.random(), x]; });
+  tagged.sort(function(a, b) { return a[0] - b[0]; });
+  return tagged.slice(0, size).map(function(x) { return x[1]; });
+};
+
 /** @return {!QuiverSocialProvider.configuration_} */
 QuiverSocialProvider.makeDefaultConfiguration_ = function() {
+  var selectedServers = QuiverSocialProvider.shuffle_(
+      QuiverSocialProvider.DEFAULT_SERVERS_,
+      QuiverSocialProvider.MAX_CONNECTIONS_);
   /** @type {!Object.<string, QuiverSocialProvider.server_> } */
   var defaultServers = {};
-  QuiverSocialProvider.DEFAULT_SERVERS_.forEach(function(server) {
+  selectedServers.forEach(function(server) {
     var serverKey = QuiverSocialProvider.serverKey_(server);
     defaultServers[serverKey] = server;
   });
@@ -216,6 +232,12 @@ QuiverSocialProvider.prototype.clearCachedCredentials = function() {
   // TODO(bemasc): What does this even mean?
 };
 
+
+/**
+ * @private {?Function}
+ */
+QuiverSocialProvider.prototype.finishLogin_ = null;
+
 /**
  * Connect to the Web Socket rendezvous server
  * e.g. social.login(Object options)
@@ -242,7 +264,8 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
 
     this.setNick_(loginOpts.userName);
 
-    var finishLogin = function() {
+    this.finishLogin_ = function() {
+      this.finishLogin_ = null;
       // Fulfill the method callback
       var clientState = this.makeClientState_(this.configuration_.self.id, this.clientSuffix_);
       continuation(clientState);
@@ -263,51 +286,116 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
             this.connectAsClient_.bind(this, friend, null)).
                 catch(onConnectionFailure.bind(this, friend)));
       }
-      Promise.all(connectionPromises).then(finishLogin);
+      return Promise.all(connectionPromises);
     }.bind(this);
 
+    // The server connection heuristic is currently a three-step process.
+    // Step 1: Connect to my own long-term servers as an owner (i.e. listening
+    // for messages from friends).
     this.connectLoop_(this.configuration_.self.servers,
-        this.connectAsOwner_.bind(this)).then(connectToFriends, connectToFriends);
+        this.connectAsOwner_.bind(this)).then(function(results) {
+      if (results.succeeded.length > 0) {
+        // If at least one connection succeeded, then we do have a working
+        // network, so any connection failures are because the server is in fact
+        // failing or unreachable.  Remove it from the active list.
+        // It will then be replaced by a friend's server.
+        results.failed.forEach(this.removeServer_, this);
+      }
+      // Step 2: Connect to friends.  If I don't have MAX_CONNECTIONS long-term
+      // servers of my own, I will adopt the first new server(s) to which I
+      // connect during this process as long-term servers.
+      return connectToFriends();
+    }.bind(this)).then(function() {
+      var deficit = QuiverSocialProvider.MAX_CONNECTIONS_ - this.countOwnerConnections_();
+      // Step 3: If, after the above completes, I still have too few servers,
+      // I will retry all the default servers, and add them to the long-term
+      // set until I have MAX_CONNECTIONS servers or run out of default servers.
+      if (deficit > 0) {
+        /** @type {!Object<string, QuiverSocialProvider.server_>} */
+        var unusedDefaultServers = {};
+        QuiverSocialProvider.DEFAULT_SERVERS_.forEach(function(server) {
+          var key = QuiverSocialProvider.serverKey_(server);
+          if (!(key in this.connections_)) {
+            unusedDefaultServers[key] = server;
+          }
+        }, this);
+        return this.connectLoop_(unusedDefaultServers,
+            this.connectAsOwner_.bind(this), deficit);
+      }
+    }.bind(this)).then(function() {
+      if (this.finishLogin_) {
+        console.warn('All server connection attempts failed!');
+        // Arguably, we should report failure, not success at this point.
+        // However, the only way for the user to get back to a working state is
+        // to accept an invitation that includes a new (working) server, and
+        // they can't do that unless login has succeeded.
+        // TODO: Report failure once Quiver and application code allow us to
+        // process invitations without being logged in.
+        this.finishLogin_();
+      }
+    }.bind(this));
   }.bind(this));
 };
+
+/**
+ * @private @typedef {{
+ *   succeeded: !Array<!QuiverSocialProvider.server_>,
+ *   failed: !Array<!QuiverSocialProvider.server_>
+ * }}
+ */
+QuiverSocialProvider.connectLoopResults_ = undefined;
 
 /**
  * Async for-loop.  Try to connect to each server, and stop once we hit the
  * limit or run out of servers.
  * @param {!Object.<string, !QuiverSocialProvider.server_>} servers
  * @param {function(!QuiverSocialProvider.server_, Function)} connector
- * @return {!Promise}
+ * @param {number=} opt_limit Optional limit, defaults to MAX_CONNECTIONS
+ * @return {!Promise<!QuiverSocialProvider.connectLoopResults_>} Always fulfills.
+ *     
  * @private
  */
-QuiverSocialProvider.prototype.connectLoop_ = function(servers, connector) {
-  /** @type {Function} */ var fulfill;
-  /** @type {Function} */ var reject;
+QuiverSocialProvider.prototype.connectLoop_ = function(servers, connector,
+    opt_limit) {
+  var limit = opt_limit || QuiverSocialProvider.MAX_CONNECTIONS_;
+
+  /** @type {function(!QuiverSocialProvider.connectLoopResults_)} */
+  var fulfill;
   var promise = new Promise(function(F, R) {
     fulfill = F;
-    reject = R;
   });
 
-  var serverKeys = Object.keys(servers);
-  var tried = 0, connected = 0;
-  var helper = function(success, failure) {
-    if (success) {
-      ++connected;
-    }
-    if (connected === QuiverSocialProvider.MAX_CONNECTIONS_ ||
-        (tried === serverKeys.length && connected > 0)) {
-      fulfill();
-      return;
-    }
-    if (tried === serverKeys.length && connected === 0) {
-      reject('failed to connect');
-      return;
-    }
-    var server = servers[serverKeys[tried]];
-    ++tried;
-    connector(server, helper);
-  }.bind(this);
+  /** @type {!Array<!QuiverSocialProvider.server_>} */
+  var succeeded = [];
+  /** @type {!Array<!QuiverSocialProvider.server_>} */
+  var failed = [];
 
-  helper(undefined, undefined);
+  // Bail out early if there's no work to do.
+  var serverKeys = QuiverSocialProvider.shuffle_(Object.keys(servers));
+  if (limit === 0 || serverKeys.length === 0) {
+    fulfill({succeeded: succeeded, failed: failed});
+    return promise;
+  }
+
+  var serverIndex = 0;
+  var helper = function(retval, failure) {
+    // Due to connector's calling convention, retval is always undefined.
+    var lastServer = servers[serverKeys[serverIndex]];
+    if (failure) {
+      failed.push(lastServer);
+    } else {
+      succeeded.push(lastServer);
+    }
+    ++serverIndex;
+    if (succeeded.length === limit || serverIndex === serverKeys.length) {
+      fulfill({succeeded: succeeded, failed: failed});
+      return;
+    }
+    var nextServer = servers[serverKeys[serverIndex]];
+    connector(nextServer, helper);
+  }.bind(this);
+  connector(servers[serverKeys[0]], helper);
+
   return promise;
 };
 
@@ -361,7 +449,6 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
   var serverUrl = (server.scheme || 'https') + '://' + domain;
   var socket = io.connect(serverUrl, connectOptions);
   var resolve, reject;
-  var everConnected = false;
   this.connections_[serverKey] = {
     socket: socket,
     ready: new Promise(function(F, R) {
@@ -371,19 +458,17 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
     owner: false,
     friends: []
   };
-  socket.on("connect", function() {
-    everConnected = true;
-    resolve();  // FIXME for breakpoint.
-  });
+  socket.on("connect", resolve);
 
   socket.on("error", function(err) {
-    if (!everConnected) {
-      console.log('Failed to connect to ' + serverUrl);
-      this.disconnect_(server);
-      reject(err);
-    } else {
-      console.log('Ignoring socket.io error: ' + err);
-    }
+    console.log('Ignoring socket.io error: ' + err);
+  }.bind(this));
+
+  socket.on("connect_error", function(err) {
+    console.log('Failed to connect to ' + serverUrl);
+    socket.close();
+    this.disconnect_(server);
+    reject(err);
   }.bind(this));
 
   socket.on("message", this.onMessage.bind(this, server));
@@ -404,11 +489,16 @@ QuiverSocialProvider.prototype.connectAsOwner_ = function(server, continuation) 
   var connection = this.connect_(server);
   if (connection.owner) {
     // Already connected as owner.
+    connection.ready.then(continuation, continuation.bind(this, null));
     return;
   }
   connection.owner = true;
 
   connection.ready.then(function() {
+    // Add the server to our public list of contact points.
+    // This must be done before any calls to |makeIntroMsg_|.
+    this.addServer_(server);
+
     connection.socket.emit('join', this.configuration_.self.id);
     connection.socket.emit('emit', {
       room: 'broadcast:' + this.configuration_.self.id,
@@ -417,6 +507,10 @@ QuiverSocialProvider.prototype.connectAsOwner_ = function(server, continuation) 
 
     // Connect to self, in order to be able to send messages to my own other clients.
     this.connectAsClient_(this.configuration_.self, null, server, continuation);
+
+    if (this.finishLogin_) {
+      this.finishLogin_();
+    }
   }.bind(this)).catch(function(err) {
     continuation(undefined, err);
   });
@@ -428,9 +522,13 @@ QuiverSocialProvider.prototype.connectAsOwner_ = function(server, continuation) 
  */
 QuiverSocialProvider.prototype.disconnect_ = function(server) {
   var serverKey = QuiverSocialProvider.serverKey_(server);
-  this.connections_[serverKey].owner = false;
-  if (this.connections_[serverKey].friends.length === 0) {
-    delete this.connections_[serverKey];
+  if (this.connections_[serverKey]) {
+    this.connections_[serverKey].owner = false;
+    if (this.connections_[serverKey].friends.length === 0) {
+      delete this.connections_[serverKey];
+    }
+  } else {
+    console.warn('Disconnect called for unknown server: ', server);
   }
   if (this.countOwnerConnections_() === 0) {
     this.sendAllRosterChanged_();
@@ -453,7 +551,7 @@ QuiverSocialProvider.prototype.connectAsClient_ = function(friend, inviteRespons
 
   if (connection.friends.indexOf(friend.id) !== -1) {
     // Already connected as client.
-    connection.ready.then(continuation);
+    connection.ready.then(continuation, continuation.bind(this, null));
     return;
   }
   connection.friends.push(friend.id);
@@ -497,8 +595,8 @@ QuiverSocialProvider.prototype.connectAsClient_ = function(friend, inviteRespons
  */
 QuiverSocialProvider.prototype.makeIntroMsg_ = function() {
   /** @type {!Array.<!QuiverSocialProvider.server_>} */ var myServers = [];
-  for (var serverKey in this.connections_) {
-    if (this.connections_[serverKey].owner) {
+  for (var serverKey in this.configuration_.self.servers) {
+    if (this.connections_[serverKey] && this.connections_[serverKey].owner) {
       myServers.push(this.configuration_.self.servers[serverKey]);
     }
   }
@@ -518,14 +616,22 @@ QuiverSocialProvider.prototype.makeIntroMsg_ = function() {
  */
 QuiverSocialProvider.prototype.inviteUser = function(ignoredUserId, cb) {
   // TODO: Show pending invitations and allow cancellation?
+
+  // This implements Promise.race() except that rejections are ignored.
+  /** @type {function(string)} */ var serverIsReady;
+  /** @type {!Promise<string>} */
+  var ownerRace = new Promise(function(F, R) { serverIsReady = F; });
   this.syncConfiguration_(function() {
     /** @type {!QuiverSocialProvider.server_} */ var server;
     for (var serverKey in this.connections_) {
-      if (this.connections_[serverKey].owner) {
-        server = this.configuration_.self.servers[serverKey];
-        break;
+      var connection = this.connections_[serverKey];
+      if (connection.owner) {
+        connection.ready.then(serverIsReady.bind(this, serverKey));
       }
     }
+  }.bind(this));
+  ownerRace.then(function(serverKey) {
+    var server = this.configuration_.self.servers[serverKey];
     if (!server) {
       cb(undefined, this.err('Can\'t invite without a valid connection'));
     }
@@ -538,8 +644,6 @@ QuiverSocialProvider.prototype.inviteUser = function(ignoredUserId, cb) {
     cb({networkData: JSON.stringify(invite)});
   }.bind(this));
 };
-
-
 
 /**
  * @param {string} nick
@@ -611,6 +715,17 @@ QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, nick, invi
     // TODO: Connect to all servers.
     this.connectAsClient_(friendDesc, inviteResponse, servers[0], continuation);
   }.bind(this));
+};
+
+/**
+ * @param {QuiverSocialProvider.server_} server
+ * @private
+ */
+QuiverSocialProvider.prototype.removeServer_ = function(server) {
+  var serverKey = QuiverSocialProvider.serverKey_(server);
+
+  delete this.configuration_.self.servers[serverKey];
+  this.syncConfiguration_(function() {});
 };
 
 /**
