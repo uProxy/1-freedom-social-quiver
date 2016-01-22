@@ -67,7 +67,7 @@
 
       "acceptUserInvitation": {
        "type": "method",
-        "value": ["string", "string"]
+        "value": ["object", "string"]
       },
 
       "sendEmail": {

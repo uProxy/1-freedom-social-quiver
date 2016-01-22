@@ -2,19 +2,19 @@
 function SocialProviderInterface() {};
 
 /**
- * @param {{userName: string, agent: string}} loginOptions
+ * @param {{userName: string, pgpKeyName: ?string, agent: string}} loginOptions
  * @param {function((!Object|undefined), Object=)} continuation First argument is an onStatus event, send is an optional error message.
  */
 SocialProviderInterface.prototype.login = function(loginOptions, continuation) {};
 
 /**
  * @param {string} userId
- * @param {function(({networkData:string}|undefined), Object=)} continuation
+ * @param {function((Object|undefined), Object=)} continuation
  */
 SocialProviderInterface.prototype.inviteUser = function(userId, continuation) {};
 
 /**
- * @param {string} networkData
+ * @param {*} networkData
  * @param {string} inviteResponse
  * @param {function(undefined=, Object=)} continuation
  */
@@ -100,14 +100,20 @@ FreedomPgp.prototype.exportKey = function() {}
 
 /**
  * @param {!ArrayBuffer} plainText
- * @param {string} pubKey
+ * @param {?string=} pubKey
  * @return {!Promise<!ArrayBuffer>}
  */
 FreedomPgp.prototype.signEncrypt = function(plainText, pubKey) {}
 
 /**
  * @param {!ArrayBuffer} cipherText
- * @param {string} pubKey
+ * @param {?string=} pubKey
  * @return {!Promise<{data: !ArrayBuffer, signedBy: Array<string>}>}
  */
 FreedomPgp.prototype.verifyDecrypt = function(cipherText, pubKey) {}
+
+/**
+ * @param {string} pubKey
+ * @return {!Promise<{fingerprint: string, words: Array<string>}>}
+ */
+FreedomPgp.prototype.getFingerprint = function(pubKey) {}
