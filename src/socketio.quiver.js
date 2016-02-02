@@ -159,8 +159,7 @@ QuiverSocialProvider.makeClientTracker_ = function() {
  *   pubKey: ?string,
  *   nick: ?string,
  *   servers: !Object.<string, QuiverSocialProvider.server_>,
- *   knockCodes: !Array.<string>,
- *   inviteResponse: ?string
+ *   knockCodes: !Array.<string>
  * }}
  * id is the public key fingerprint
  * knockCodes are codes received from this user in out-of-band invites.
@@ -680,8 +679,7 @@ QuiverSocialProvider.prototype.makeIntroMsg_ = function(friend) {
     servers: this.getLiveAdvertisedServers_(),
     nick: this.configuration_.self.nick,
     knockCodes: friend.knockCodes || undefined,
-    fromClient: this.clientSuffix_,
-    inviteResponse: friend.inviteResponse || undefined
+    fromClient: this.clientSuffix_
   };
 };
 
@@ -783,14 +781,14 @@ QuiverSocialProvider.prototype.addDisconnectMessage_ =
 
 /**
  * @param {*} networkData
- * @param {string} inviteResponse
  * @param {!Function} cb
  * @override
  */
-QuiverSocialProvider.prototype.acceptUserInvitation = function(networkData, inviteResponse, cb) {
+QuiverSocialProvider.prototype.acceptUserInvitation = function(networkData,
+    cb) {
   var invite = /** @type {!QuiverSocialProvider.invite_} */ (networkData);
   this.addFriend_(invite.servers, invite.userId, null, [invite.knockCode],
-      invite.nick, inviteResponse, cb);
+      invite.nick, cb);
 };
 
 /**
@@ -799,12 +797,11 @@ QuiverSocialProvider.prototype.acceptUserInvitation = function(networkData, invi
  * @param {!Array.<string>} knockCodes Only nonempty when processing an invite
  * @param {?string} pubKey
  * @param {?string} nick
- * @param {?string} inviteResponse
  * @param {function(undefined, *=)} continuation
  * @private
  */
 QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, pubKey,
-    knockCodes, nick, inviteResponse, continuation) {
+    knockCodes, nick, continuation) {
   if (userId === this.configuration_.self.id) {
     continuation(undefined);
     return;
@@ -818,8 +815,7 @@ QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, pubKey,
       pubKey: pubKey,
       nick: null,
       servers: {},
-      knockCodes: [],
-      inviteResponse: null
+      knockCodes: []
     };
     this.configuration_.friends[userId] = friendDesc;
   }
@@ -845,7 +841,6 @@ QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, pubKey,
     // changes to the OpenPGP-formatted keystring, such as adding new subkeys.
     friendDesc.pubKey = pubKey;
   }
-  friendDesc.inviteResponse = inviteResponse;
   this.syncConfiguration_(function() {
     // TODO: Connect to all servers.
     this.connectAsClient_(friendDesc, servers[0]).ready
@@ -1139,17 +1134,13 @@ QuiverSocialProvider.prototype.logout = function(continuation) {
  * @private
  * @param {string} userId
  * @param {?string=} clientSuffix Optional.
- * @param {?string=} inviteResponse
  **/
-QuiverSocialProvider.prototype.changeRoster = function(userId, clientSuffix, inviteResponse) {
+QuiverSocialProvider.prototype.changeRoster = function(userId, clientSuffix) {
   var userProfile = this.makeProfile_(userId);
   this.dispatchEvent('onUserProfile', userProfile);
 
   if (clientSuffix) {
     var clientState = this.makeClientState_(userId, clientSuffix);
-    if (inviteResponse) {
-      clientState.inviteResponse = inviteResponse;
-    }
     this.dispatchEvent('onClientState', clientState);
   } else {
     for (var eachClientSuffix in this.clients_[userId]) {
@@ -1251,8 +1242,7 @@ QuiverSocialProvider.prototype.onMessage = function(server, msg, fromUserId,
         pubKey: fromPubKey,
         knockCodes: [],
         servers: {},
-        nick: null,
-        inviteResponse: null
+        nick: null
       };
       this.emitEncrypted_(socket, sender, {
         cmd: 'ping',
@@ -1284,14 +1274,14 @@ QuiverSocialProvider.prototype.onMessage = function(server, msg, fromUserId,
     }
   } else if (msg.cmd === 'intro') {
     if (this.shouldAllowIntro_(fromUserId, msg)) {
-      this.addFriend_(msg.servers, fromUserId, fromPubKey, [], msg.nick, null,
+      this.addFriend_(msg.servers, fromUserId, fromPubKey, [], msg.nick,
           function() {
         // TODO: Remove each code in msg.knockCodes from liveKnockCodes if it is
         // limited to a single user.
         this.addClient_(fromUserId, msg.fromClient);
         gotIntro = this.clients_[fromUserId][msg.fromClient].gotIntro;
         gotIntro[serverKey] = true;
-        this.changeRoster(fromUserId, msg.fromClient, msg.inviteResponse);
+        this.changeRoster(fromUserId, msg.fromClient);
       }.bind(this));
     }
   } else if (msg.cmd === 'disconnected') {

@@ -15,10 +15,10 @@ SocialProviderInterface.prototype.inviteUser = function(userId, continuation) {}
 
 /**
  * @param {*} networkData
- * @param {string} inviteResponse
  * @param {function(undefined=, Object=)} continuation
  */
-SocialProviderInterface.prototype.acceptUserInvitation = function(networkData, inviteResponse, continuation) {};
+SocialProviderInterface.prototype.acceptUserInvitation = function(networkData,
+    continuation) {};
 
 SocialProviderInterface.prototype.clearCachedCredentials = function() {};
 
