@@ -576,6 +576,7 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
     // user IDs I do not yet know.  This is safe because the ping contains no
     // sensitive information.
     // TODO: Prevent replays, e.g. by adding a timestamp.
+    // TODO: Is it safe to include the client suffix here?  This is plaintext.
     return this.signEncryptMessage_({
       cmd: 'ping',
       fromClient: this.clientSuffix_
