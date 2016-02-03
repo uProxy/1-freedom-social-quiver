@@ -84,6 +84,26 @@ QuiverSocialProvider.DEFAULT_SERVERS_ = [{
   type: 'socketio',
   domain: 'd1j0v91oi5t6ys.cloudfront.net',
   front: 'a0.awsstatic.com'
+}, {
+  type: 'socketio',
+  domain: 'dzgea1sj9ik08.cloudfront.net',
+  front: 'a0.awsstatic.com'
+}, {
+  type: 'socketio',
+  domain: 'd2oi2yhmhpjpt7.cloudfront.net',
+  front: 'a0.awsstatic.com'
+}, {
+  type: 'socketio',
+  domain: 'd2cqtpyb8m6x8r.cloudfront.net',
+  front: 'a0.awsstatic.com'
+}, {
+  type: 'socketio',
+  domain: 'd3h805atiromvi.cloudfront.net',
+  front: 'a0.awsstatic.com'
+}, {
+  type: 'socketio',
+  domain: 'd2yp1zilrgqkqt.cloudfront.net',
+  front: 'a0.awsstatic.com'
 }];
 
 /**
@@ -352,7 +372,7 @@ QuiverSocialProvider.connectLoopResults_ = undefined;
  * @param {function(!QuiverSocialProvider.server_, Function)} connector
  * @param {number=} opt_limit Optional limit, defaults to MAX_CONNECTIONS
  * @return {!Promise<!QuiverSocialProvider.connectLoopResults_>} Always fulfills.
- *     
+ *
  * @private
  */
 QuiverSocialProvider.prototype.connectLoop_ = function(servers, connector,
