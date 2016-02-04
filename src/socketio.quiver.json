@@ -44,7 +44,8 @@
           "url": "string",
           "interactive": "boolean",
           "rememberLogin": "boolean",
-          "userName": "string"
+          "userName": "string",
+          "pgpKeyName": "string"
         }],
         "ret": {
           "userId": "string",
