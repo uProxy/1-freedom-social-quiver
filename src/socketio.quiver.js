@@ -562,12 +562,16 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
     reject(new Error('Never connected to ' + serverUrl));
   }.bind(this));
 
-  this.connections_[serverKey].ready.then(function() {
+  var onConnect = function() {
     socket.emit('join', this.configuration_.self.id);
 
     if (this.finishLogin_) {
       this.finishLogin_();
     }
+
+    // Cue up a broadcast disconnect message so everyone can see if I go offline
+    // and am no longer reachable on this server.
+    this.addDisconnectMessage_(socket);
 
     // Emit an unencrypted ping on the broadcast channel, so that everyone can
     // see that I have come online.  This ping is not encrypted because it is
@@ -579,16 +583,25 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
     return this.signEncryptMessage_({
       cmd: 'ping',
       fromClient: this.clientSuffix_
-    });
-  }.bind(this)).then(function(signedPing) {
-    socket.emit('emit', {
-      room: 'broadcast:' + this.configuration_.self.id,
-      msg: signedPing
-    });
+    }).then(function(signedPing) {
+      socket.emit('emit', {
+        room: 'broadcast:' + this.configuration_.self.id,
+        msg: signedPing
+      });
+    }.bind(this));
+  }.bind(this);
 
+  this.connections_[serverKey].ready.then(onConnect).then(function() {
     // Connect to self, in order to be able to send messages to my own other clients.
     this.connectAsClient_(this.configuration_.self, server);
   }.bind(this));
+
+  // We were briefly offline, so we have been disconnected from our room, and
+  // may have missed any inbound pings.  Re-join, and re-ping to indicate that
+  // we are now online.
+  // TODO: Figure out how to deal with friends whose disconnect messages were
+  // dropped during the disconnection interval.  Currently they will be zombies.
+  socket.on("reconnect", onConnect);
 
   return this.connections_[serverKey];
 };
@@ -631,7 +644,7 @@ QuiverSocialProvider.prototype.connectAsClient_ = function(friend, server) {
   connection.friends.push(friend.id);
   this.clientConnections_[friend.id].push(connection);
 
-  connection.ready.then(function() {
+  var onConnect = function() {
     // Join my friend's broadcast room so I can see when they come online.
     connection.socket.emit('join', 'broadcast:' + friend.id);
 
@@ -646,16 +659,7 @@ QuiverSocialProvider.prototype.connectAsClient_ = function(friend, server) {
       });
     }.bind(this));
 
-    if (friend.pubKey) {
-      // Normally we want to add a disconnect message here, immediately after
-      // connecting as a client.  However, this will not work when processing
-      // an invite, because we do not yet know the recipient's pubKey.
-      // TODO: Figure out how to set a disconnect message for the initial
-      // connection.
-      this.addDisconnectMessage_(connection.socket, friend);
-    }
-
-    this.changeRoster(friend.id);
+    this.addDisconnectMessage_(connection.socket, friend);
 
     if (this.getLiveAdvertisedServers_().length <
         QuiverSocialProvider.MAX_CONNECTIONS_) {
@@ -663,7 +667,15 @@ QuiverSocialProvider.prototype.connectAsClient_ = function(friend, server) {
       // this one, since it is evidently working.
       this.addServer_(server);
     }
-  }.bind(this));
+  }.bind(this);
+
+  connection.ready.then(onConnect);
+
+  // When we were disconnected, the server sent our disconnect message and
+  // removed us from any rooms. Our friends received the disconnect message and
+  // marked us as disconnected from this server.  Now that we are back, we need
+  // to set a new disconnect message and notify friends that we are back online.
+  connection.socket.on('reconnect', onConnect);
 
   return connection;
 };
@@ -767,16 +779,23 @@ QuiverSocialProvider.prototype.selfDescriptionChanged_ = function() {
 
 /**
  * @param {Socket} socket
- * @param {QuiverSocialProvider.userDesc_} friend
+ * @param {QuiverSocialProvider.userDesc_=} friend
  * @private
  */
 QuiverSocialProvider.prototype.addDisconnectMessage_ =
     function(socket, friend) {
-  var disconnectMessage = {
+  // Disconnect messages contain no sensitive information, so they don't have to
+  // be encrypted.  This is important when setting a disconnect message for a
+  // new friend whose public key is not yet known.
+  this.signEncryptMessage_({
     'cmd': 'disconnected',
     'fromClient': this.clientSuffix_
-  };
-  this.emitEncrypted_(socket, friend, disconnectMessage, true);
+  }).then(function(disconnectMessage) {
+    socket.emit('addDisconnectMessage', {
+      room: friend ? friend.id : 'broadcast:' + this.configuration_.self.id,
+      msg: disconnectMessage
+    });
+  }.bind(this));
 };
 
 /**
@@ -841,6 +860,10 @@ QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, pubKey,
     // changes to the OpenPGP-formatted keystring, such as adding new subkeys.
     friendDesc.pubKey = pubKey;
   }
+
+  // Emit a UserProfile event
+  this.dispatchEvent('onUserProfile', this.makeProfile_(userId));
+
   this.syncConfiguration_(function() {
     // TODO: Connect to all servers.
     this.connectAsClient_(friendDesc, servers[0]).ready
@@ -1067,11 +1090,9 @@ QuiverSocialProvider.prototype.signEncryptMessage_ = function(msg, opt_key) {
  * @param {Socket} socket
  * @param {QuiverSocialProvider.userDesc_} friend
  * @param {*} msg JSON-ifiable message
- * @param {boolean=} opt_disconnect Delay the message until I disconnect
  * @private
  */
-QuiverSocialProvider.prototype.emitEncrypted_ = function(socket, friend, msg,
-    opt_disconnect) {
+QuiverSocialProvider.prototype.emitEncrypted_ = function(socket, friend, msg) {
   if (!socket) {
     console.error('BUG: Tried to send on null socket');
     return;
@@ -1084,8 +1105,7 @@ QuiverSocialProvider.prototype.emitEncrypted_ = function(socket, friend, msg,
 
   this.signEncryptMessage_(msg, friend.pubKey).then(function(cipherData) {
     // cipherData is an ArrayBuffer.  socket.io supports sending ArrayBuffers.
-    var verb = opt_disconnect ? 'addDisconnectMessage' : 'emit';
-    socket.emit(verb, {
+    socket.emit('emit', {
       room: friend.id,
       msg: cipherData
     });
