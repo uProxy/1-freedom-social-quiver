@@ -2,23 +2,23 @@
 function SocialProviderInterface() {};
 
 /**
- * @param {{userName: string, agent: string}} loginOptions
+ * @param {{userName: string, pgpKeyName: ?string, agent: string}} loginOptions
  * @param {function((!Object|undefined), Object=)} continuation First argument is an onStatus event, send is an optional error message.
  */
 SocialProviderInterface.prototype.login = function(loginOptions, continuation) {};
 
 /**
  * @param {string} userId
- * @param {function(({networkData:string}|undefined), Object=)} continuation
+ * @param {function((Object|undefined), Object=)} continuation
  */
 SocialProviderInterface.prototype.inviteUser = function(userId, continuation) {};
 
 /**
- * @param {string} networkData
- * @param {string} inviteResponse
+ * @param {*} networkData
  * @param {function(undefined=, Object=)} continuation
  */
-SocialProviderInterface.prototype.acceptUserInvitation = function(networkData, inviteResponse, continuation) {};
+SocialProviderInterface.prototype.acceptUserInvitation = function(networkData,
+    continuation) {};
 
 SocialProviderInterface.prototype.clearCachedCredentials = function() {};
 
@@ -73,3 +73,47 @@ FreedomWebSocket.prototype.on = function(msg, handler) {};
 FreedomWebSocket.prototype.send = function(msg) {};
 
 FreedomWebSocket.prototype.close = function() {};
+
+/** @interface */
+function FreedomCrypto() {};
+
+/**
+ * @param {number} numBytes
+ * @return {!Promise<!ArrayBuffer>}
+ */
+FreedomCrypto.prototype.getRandomBytes = function(numBytes) {}
+
+/** @interface */
+function FreedomPgp() {};
+
+/**
+ * @param {string} passphrase
+ * @param {string} uid
+ * @return {!Promise<void>}
+ */
+FreedomPgp.prototype.setup = function(passphrase, uid) {}
+
+/**
+ * @return {!Promise<{key: string, fingerprint: string, words: Array<string>}>}
+ */
+FreedomPgp.prototype.exportKey = function() {}
+
+/**
+ * @param {!ArrayBuffer} plainText
+ * @param {?string=} pubKey
+ * @return {!Promise<!ArrayBuffer>}
+ */
+FreedomPgp.prototype.signEncrypt = function(plainText, pubKey) {}
+
+/**
+ * @param {!ArrayBuffer} cipherText
+ * @param {?string=} pubKey
+ * @return {!Promise<{data: !ArrayBuffer, signedBy: Array<string>}>}
+ */
+FreedomPgp.prototype.verifyDecrypt = function(cipherText, pubKey) {}
+
+/**
+ * @param {string} pubKey
+ * @return {!Promise<{fingerprint: string, words: Array<string>}>}
+ */
+FreedomPgp.prototype.getFingerprint = function(pubKey) {}

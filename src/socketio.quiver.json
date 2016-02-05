@@ -6,6 +6,12 @@
       "socketio.quiver.js"
    	]
   },
+  "dependencies": {
+    "pgp-e2e": {
+      "url": "../freedom-pgp-e2e/pgpapi.json",
+      "api": "crypto"
+    }
+  },
   "default": "social2",
   "provides": [
     "social2"
@@ -38,7 +44,8 @@
           "url": "string",
           "interactive": "boolean",
           "rememberLogin": "boolean",
-          "userName": "string"
+          "userName": "string",
+          "pgpKeyName": "string"
         }],
         "ret": {
           "userId": "string",
@@ -60,8 +67,8 @@
       },
 
       "acceptUserInvitation": {
-       "type": "method",
-        "value": ["string", "string"]
+        "type": "method",
+        "value": ["object"]
       },
 
       "sendEmail": {
@@ -140,6 +147,7 @@
     }
   },
   "permissions": [
+    "core.crypto",
     "core.storage",
     "core.tcpsocket",
     "core.xhr"
