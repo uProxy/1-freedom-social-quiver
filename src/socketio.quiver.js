@@ -103,23 +103,23 @@ QuiverSocialProvider.DEFAULT_SERVERS_ = [{
 }, {
   type: 'socketio',
   domain: 'dzgea1sj9ik08.cloudfront.net',
-  front: 'a0.awsstatic.com'
+  front: 'sdk.amazonaws.com'
 }, {
   type: 'socketio',
   domain: 'd2oi2yhmhpjpt7.cloudfront.net',
-  front: 'a0.awsstatic.com'
+  front: 'api.mapbox.com'
 }, {
   type: 'socketio',
   domain: 'd2cqtpyb8m6x8r.cloudfront.net',
-  front: 'a0.awsstatic.com'
+  front: 'cdn.tinymce.com'
 }, {
   type: 'socketio',
   domain: 'd3h805atiromvi.cloudfront.net',
-  front: 'a0.awsstatic.com'
+  front: 'assets.tumblr.com'
 }, {
   type: 'socketio',
   domain: 'd2yp1zilrgqkqt.cloudfront.net',
-  front: 'a0.awsstatic.com'
+  front: 'www.splunk.com'
 }];
 
 /**
@@ -526,14 +526,18 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
   }
 
   var connectOptions = {
-    'transports': ['polling'],  // Force XHR so we can domain-front
-    'forceNew': true  // Required for login-after-logout to work
+    'transports': ['polling']  // Force XHR so we can domain-front
   };
   var domain = server.front ?
       frontdomain.munge(server.front, server.domain) :
       server.domain;
   var serverUrl = (server.scheme || 'https') + '://' + domain;
-  var socket = io.connect(serverUrl, connectOptions);
+  // The first call to io.connect() to a given server will create a new socket
+  // and connect to the server.  Subsequent io.connect() calls to the same
+  // server will return the same socket, in its current state, even if the
+  // socket has been disconnected.  We therefore call connect() to ensure that
+  // the socket connects in these cases, which occur on login after logout.
+  var socket = io.connect(serverUrl, connectOptions).connect();
   var resolve, reject;
   this.connections_[serverKey] = {
     socket: socket,
