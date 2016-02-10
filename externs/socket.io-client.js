@@ -19,6 +19,12 @@ Socket.prototype.emit = function(name, value) {};
 Socket.prototype.close = function() {};
 
 /**
+ * @return {!Socket}
+ */
+Socket.prototype.connect = function() {};
+
+
+/**
  * @constructor
  * @private
  */
