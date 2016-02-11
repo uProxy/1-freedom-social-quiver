@@ -56,7 +56,10 @@ SocialInterface.prototype.provideAsynchronous = function(x) {};
 /** @constructor @struct */
 function CoreInterface() {};
 
-/** @param {string} x */
+/**
+ * @param {string} x
+ * @return {!Promise<!Console>}
+ */
 CoreInterface.prototype.getLogger = function(x) {};
 
 /** @return {!SocialInterface} */
