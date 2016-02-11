@@ -616,13 +616,27 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
  */
 QuiverSocialProvider.prototype.disconnect_ = function(server) {
   var serverKey = QuiverSocialProvider.serverKey_(server);
-  if (this.connections_[serverKey]) {
-    if (this.connections_[serverKey].friends.length === 0) {
-      delete this.connections_[serverKey];
-    }
-  } else {
+  var connection = this.connections_[serverKey];
+  if (!connection) {
     console.warn('Disconnect called for unknown server: ', server);
+    return;
   }
+  connection.friends.forEach(function(userId) {
+    var connections = this.clientConnections_[userId];
+    if (!connections) {
+      console.warn('Can\'t find user', userId);
+      return;
+    }
+
+    var index = connections.indexOf(connection);
+    if (index === -1) {
+      console.warn('Can\'t find server for user', userId);
+      return;
+    }
+
+    connections.splice(index);
+  }, this);
+  delete this.connections_[serverKey];
   if (!this.isOnline_()) {
     this.sendAllRosterChanged_();
   }
