@@ -56,6 +56,8 @@ function QuiverSocialProvider(dispatchEvent) {
     this.onPubKey_ = F;
   }.bind(this));
 
+  this.initLogger_();
+
   /** @private {string} */
   this.clientSuffix_;  // jshint ignore:line
 
@@ -337,8 +339,8 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
 
     var connectToFriends = function() {
       var onConnectionFailure = function(friend) {
-        console.warn('Failed to connect to friend: ' + JSON.stringify(friend));
-      };
+        this.warn('Failed to connect to friend: ' + JSON.stringify(friend));
+      }.bind(this);
 
       // Connect to friends
       /** @type {!Array.<!Promise>} */ var connectionPromises = [];
@@ -390,7 +392,7 @@ QuiverSocialProvider.prototype.login = function(loginOpts, continuation) {
       }
     }.bind(this)).then(function() {
       if (this.finishLogin_) {
-        console.warn('All server connection attempts failed!');
+        this.warn('All server connection attempts failed!');
         // Arguably, we should report failure, not success at this point.
         // However, the only way for the user to get back to a working state is
         // to accept an invitation that includes a new (working) server, and
@@ -516,7 +518,7 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
   }
 
   if (server.type !== 'socketio') {
-    console.warn('Unknown type: ' + server.type);
+    this.warn('Unknown type: ' + server.type);
     this.connections_[serverKey] = {
       socket: null,
       ready: Promise.reject(),
@@ -550,11 +552,11 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
   socket.on("connect", resolve);
 
   socket.on("error", function(err) {
-    console.log('Ignoring socket.io error: ' + err);
+    this.warn('socketio: error for ' + serverUrl + ', ' + err);
   }.bind(this));
 
   socket.on("connect_error", function(err) {
-    console.log('Failed to connect to ' + serverUrl);
+    this.warn('socketio: connect_error for ' + serverUrl + ', ' + err);
     socket.close();
     this.disconnect_(server);
     reject(err);
@@ -562,11 +564,13 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
 
   socket.on("message", this.onEncryptedMessage_.bind(this, server));
   socket.on("reconnect_failed", function(msg) {
+    this.warn('socketio: reconnect_failed for ' + serverUrl + ', ' + err);
     this.disconnect_(server);
     reject(new Error('Never connected to ' + serverUrl));
   }.bind(this));
 
   var onConnect = function() {
+    this.log('socketio: connect for ' + serverUrl);
     socket.emit('join', this.configuration_.self.id);
 
     if (this.finishLogin_) {
@@ -605,7 +609,16 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
   // we are now online.
   // TODO: Figure out how to deal with friends whose disconnect messages were
   // dropped during the disconnection interval.  Currently they will be zombies.
-  socket.on("reconnect", onConnect);
+  socket.on("reconnect", function() {
+    this.warn('socketio: reconnect for ' + serverUrl);
+    onConnect();
+  }.bind(this));
+
+  socket.on("disconnect", function() {
+    // This may be emitted when the user logs out of Quiver, in that case
+    // it is not an error.
+    this.warn('socketio: disconnect for ' + serverUrl);
+  }.bind(this));
 
   return this.connections_[serverKey];
 };
@@ -618,19 +631,19 @@ QuiverSocialProvider.prototype.disconnect_ = function(server) {
   var serverKey = QuiverSocialProvider.serverKey_(server);
   var connection = this.connections_[serverKey];
   if (!connection) {
-    console.warn('Disconnect called for unknown server: ', server);
+    this.warn('Disconnect called for unknown server ' + JSON.stringify(server));
     return;
   }
   connection.friends.forEach(function(userId) {
     var connections = this.clientConnections_[userId];
     if (!connections) {
-      console.warn('Can\'t find user', userId);
+      this.warn('Can\'t find user ' + userId);
       return;
     }
 
     var index = connections.indexOf(connection);
     if (index === -1) {
-      console.warn('Can\'t find server for user', userId);
+      this.warn('Can\'t find server for user ' + userId);
       return;
     }
 
@@ -844,7 +857,8 @@ QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, pubKey,
     return;
   }
 
-  console.log('Adding Friend!', arguments);
+  this.log('Adding Friend! userId: ' + userId +
+      ', servers: ' + JSON.stringify(servers));
   var friendDesc = this.configuration_.friends[userId];
   if (!friendDesc) {
     friendDesc = {
@@ -916,7 +930,7 @@ QuiverSocialProvider.prototype.addServer_ = function(server) {
   this.configuration_.self.servers[serverKey] = server;
   this.syncConfiguration_(function() {
     this.connect_(server).ready.catch(function(err) {
-      console.warn('Failed to connect to new server: ' + serverKey);
+      this.warn('Failed to connect to new server: ' + serverKey);
     });
   }.bind(this));
 };
@@ -1112,12 +1126,12 @@ QuiverSocialProvider.prototype.signEncryptMessage_ = function(msg, opt_key) {
  */
 QuiverSocialProvider.prototype.emitEncrypted_ = function(socket, friend, msg) {
   if (!socket) {
-    console.error('BUG: Tried to send on null socket');
+    this.logError('BUG: Tried to send on null socket');
     return;
   }
 
   if (!friend.pubKey) {
-    console.error('BUG: Tried to encrypt a message but there is no key');
+    this.logError('BUG: Tried to encrypt a message but there is no key');
     return;
   }
 
@@ -1128,8 +1142,8 @@ QuiverSocialProvider.prototype.emitEncrypted_ = function(socket, friend, msg) {
       msg: cipherData
     });
   }.bind(this)).catch(function(e) {
-    console.warn('emit failed:', e);
-  });
+    this.warn('emit failed: ' + e);
+  }.bind(this));
 };
 
 /**
@@ -1207,8 +1221,8 @@ QuiverSocialProvider.prototype.onEncryptedMessage_ = function(server, msg) {
       this.onMessage(server, obj, userId, msg.key);
     }.bind(this));
   }.bind(this)).catch(function(e) {
-    console.warn('Decryption failed:', e);
-  });
+    this.warn('Decryption failed: ' + e);
+  }.bind(this));
 };
 
 /**
@@ -1304,10 +1318,10 @@ QuiverSocialProvider.prototype.onMessage = function(server, msg, fromUserId,
             message: msg.msg
           });
         } else {
-          console.log('Ignoring duplicate message with index ' + msg.index);
+          this.log('Ignoring duplicate message with index ' + msg.index);
         }
       } else {
-        console.warn('Ignoring message from unknown user');
+        this.warn('Ignoring message from unknown user');
       }
     }
   } else if (msg.cmd === 'intro') {
@@ -1388,6 +1402,41 @@ QuiverSocialProvider.prototype.err = function(code) {
     message: 'TODO: figure out how to populate message field'
   };
   return err;
+};
+
+/*
+ * Initialize this.logger_.
+ * @private
+ */
+QuiverSocialProvider.prototype.initLogger_ = function() {
+  this.logger_ = console;  // Initialize to console if it exists.
+  if (typeof freedom !== 'undefined' &&
+      typeof freedom.core === 'function') {
+    freedom.core().getLogger('[QuiverSocialProvider]').then(function(log) {
+      this.logger_ = log;
+    }.bind(this));
+  }
+};
+
+/**
+ * @param {string} str
+ */
+QuiverSocialProvider.prototype.log = function(str) {
+  this.logger_.log(str);
+};
+
+/**
+ * @param {string} str
+ */
+QuiverSocialProvider.prototype.warn = function(str) {
+  this.logger_.warn(str);
+};
+
+/**
+ * @param {string} str
+ */
+QuiverSocialProvider.prototype.logError = function(str) {
+  this.logger_.error(str);
 };
 
 // Register provider when in a module context.
