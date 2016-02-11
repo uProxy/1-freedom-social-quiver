@@ -52,11 +52,21 @@ SocialInterface.prototype.ERRCODE;
 /** @param {!function(new:SocialProviderInterface, function())} x */
 SocialInterface.prototype.provideAsynchronous = function(x) {};
 
+
+/** @constructor @struct */
+function CoreInterface() {};
+
+/** @param {string} x */
+CoreInterface.prototype.getLogger = function(x) {};
+
 /** @return {!SocialInterface} */
 var freedom = function() {};
 
 /** @type {?function():!SocialInterface} */
 freedom.social;
+
+/** @type {?function():!CoreInterface} */
+freedom.core;
 
 /** @interface */
 function FreedomWebSocket() {}

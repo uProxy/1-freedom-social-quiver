@@ -564,7 +564,7 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
 
   socket.on("message", this.onEncryptedMessage_.bind(this, server));
   socket.on("reconnect_failed", function(msg) {
-    this.warn('socketio: reconnect_failed for ' + serverUrl + ', ' + err);
+    this.warn('socketio: reconnect_failed for ' + serverUrl + ', ' + msg);
     this.disconnect_(server);
     reject(new Error('Never connected to ' + serverUrl));
   }.bind(this));
@@ -1404,7 +1404,7 @@ QuiverSocialProvider.prototype.err = function(code) {
   return err;
 };
 
-/*
+/**
  * Initialize this.logger_.
  * @private
  */
