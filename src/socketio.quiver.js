@@ -141,7 +141,6 @@ QuiverSocialProvider.MAX_CONNECTIONS_ = 2;
 
 /**
  * @private @typedef {{
- *   toCounter: number,
  *   fromCounter: number,
  *   gotIntro: !Object.<string, boolean>
  * }}
@@ -151,7 +150,6 @@ QuiverSocialProvider.clientTracker_ = undefined;
 
 QuiverSocialProvider.makeClientTracker_ = function() {
   return {
-    toCounter: 0,
     fromCounter: 0,
     gotIntro: {}
   };
@@ -1064,23 +1062,6 @@ QuiverSocialProvider.prototype.sendMessage = function(to, msg, continuation) {
     return;
   }
 
-  var index = 0;
-  if (clientSuffix) {
-    index = ++this.clients_[userId][clientSuffix].toCounter;
-  } else {
-    // Choose a high enough index for the message that it will be accepted by all clients.
-    // TODO: make the toCounter per-user instead of per-client?
-    var userClients = this.clients_[userId];
-    var suffix;
-    for (suffix in userClients) {
-      index = Math.max(index, ++userClients[suffix].toCounter);
-    }
-    // Ensure subsequent messages continue to increase monotonically.
-    for (suffix in userClients) {
-      userClients[suffix].toCounter = index;
-    }
-  }
-
   var friend = userId === this.configuration_.self.id ?
       this.configuration_.self : this.configuration_.friends[userId];
   if (!friend) {
@@ -1088,6 +1069,7 @@ QuiverSocialProvider.prototype.sendMessage = function(to, msg, continuation) {
     return;
   }
   // TODO: Only encrypt once, even if there are multiple connections.
+  var index = Date.now();
   this.clientConnections_[userId].forEach(function(connection) {
     this.emitEncrypted_(connection.socket, friend, {
       cmd: 'msg',
@@ -1343,18 +1325,6 @@ QuiverSocialProvider.prototype.onMessage = function(server, msg, fromUserId,
         this.clients_[fromUserId][msg.fromClient]) {
       gotIntro = this.clients_[fromUserId][msg.fromClient].gotIntro;
       delete gotIntro[serverKey];
-
-      // Reset fromCounter and toCounter if the user has signed out.
-      // This is needed in order to support non-ephemeral clientSuffixes.
-      // TODO: Replace with a less racy mechanism.
-      var key = null;
-      for (key in gotIntro) {
-        break;
-      }
-      if (!key) {
-        this.clients_[fromUserId][msg.fromClient].toCounter = 0;
-        this.clients_[fromUserId][msg.fromClient].fromCounter = 0;
-      }
     }
     // TODO: Ping to see if the user is still alive.
     this.changeRoster(fromUserId, msg.fromClient);
