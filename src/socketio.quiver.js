@@ -181,7 +181,8 @@ QuiverSocialProvider.configuration_ = undefined;
  * @private @typedef {{
  *   socket: Socket,
  *   ready: Promise.<void>,
- *   friends: !Array.<string>
+ *   friends: !Array.<string>,
+ *   listens: !Array.<{eventName: string, listener: !Function}>
  * }}
  */
 QuiverSocialProvider.connection_ = undefined;
@@ -507,6 +508,31 @@ QuiverSocialProvider.prototype.isOnline_ = function() {
 };
 
 /**
+ * @param {!QuiverSocialProvider.connection_} connection
+ * @param {string} eventName
+ * @param {!Function} listener
+ * @private
+ */
+QuiverSocialProvider.prototype.listen_ = function(connection, eventName,
+    listener) {
+  connection.socket.on(eventName, listener);
+  connection.listens.push({
+    eventName: eventName,
+    listener: listener
+  });
+};
+
+/**
+ * @param {!QuiverSocialProvider.connection_} connection
+ * @private
+ */
+QuiverSocialProvider.prototype.unlisten_ = function(connection) {
+  connection.listens.forEach(function(listen) {
+    connection.socket.removeListener(listen.eventName, listen.listener);
+  }, this);
+};
+
+/**
  * @param {!QuiverSocialProvider.server_} server
  * @return {!QuiverSocialProvider.connection_}
  * @private
@@ -522,7 +548,8 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
     this.connections_[serverKey] = {
       socket: null,
       ready: Promise.reject(),
-      friends: []
+      friends: [],
+      listens: []
     };
     return this.connections_[serverKey];
   }
@@ -541,29 +568,32 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
   // the socket connects in these cases, which occur on login after logout.
   var socket = io.connect(serverUrl, connectOptions).connect();
   var resolve, reject;
-  this.connections_[serverKey] = {
+  var connection = {
     socket: socket,
     ready: new Promise(function(F, R) {
       resolve = F;
       reject = R;
     }),
-    friends: []
+    friends: [],
+    listens: []
   };
-  socket.on("connect", resolve);
+  this.connections_[serverKey] = connection;
+  this.log_('Adding core listeners for: ' + serverKey);
+  this.listen_(connection, "connect", resolve);
 
-  socket.on("error", function(err) {
+  this.listen_(connection, "error", function(err) {
     this.warn_('socketio: error for ' + serverUrl + ', ' + err);
   }.bind(this));
 
-  socket.on("connect_error", function(err) {
+  this.listen_(connection, "connect_error", function(err) {
     this.warn_('socketio: connect_error for ' + serverUrl + ', ' + err);
     socket.close();
     this.disconnect_(server);
     reject(err);
   }.bind(this));
 
-  socket.on("message", this.onEncryptedMessage_.bind(this, server));
-  socket.on("reconnect_failed", function(msg) {
+  this.listen_(connection, "message", this.onEncryptedMessage_.bind(this, server));
+  this.listen_(connection, "reconnect_failed", function(msg) {
     this.warn_('socketio: reconnect_failed for ' + serverUrl + ', ' + msg);
     this.disconnect_(server);
     reject(new Error('Never connected to ' + serverUrl));
@@ -600,7 +630,9 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
   }.bind(this);
 
   this.connections_[serverKey].ready.then(onConnect).then(function() {
-    // Connect to self, in order to be able to send messages to my own other clients.
+    // Connect to self, in order to be able to send messages to my own other
+    // clients.
+    // TODO: Only do this on servers I am advertising?
     this.connectAsClient_(this.configuration_.self, server);
   }.bind(this));
 
@@ -609,12 +641,12 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
   // we are now online.
   // TODO: Figure out how to deal with friends whose disconnect messages were
   // dropped during the disconnection interval.  Currently they will be zombies.
-  socket.on("reconnect", function() {
+  this.listen_(connection, "reconnect", function() {
     this.warn_('socketio: reconnect for ' + serverUrl);
     onConnect();
   }.bind(this));
 
-  socket.on("disconnect", function() {
+  this.listen_(connection, "disconnect", function() {
     // This may be emitted when the user logs out of Quiver, in that case
     // it is not an error.
     this.warn_('socketio: disconnect for ' + serverUrl);
@@ -649,6 +681,7 @@ QuiverSocialProvider.prototype.disconnect_ = function(server) {
 
     connections.splice(index);
   }, this);
+  this.log_('Deleting on disconnect: ' + serverKey);
   delete this.connections_[serverKey];
   if (!this.isOnline_()) {
     this.sendAllRosterChanged_();
@@ -706,7 +739,9 @@ QuiverSocialProvider.prototype.connectAsClient_ = function(friend, server) {
   // removed us from any rooms. Our friends received the disconnect message and
   // marked us as disconnected from this server.  Now that we are back, we need
   // to set a new disconnect message and notify friends that we are back online.
-  connection.socket.on('reconnect', onConnect);
+  if (connection.socket) {
+    this.listen_(connection, 'reconnect', onConnect);
+  }
 
   return connection;
 };
@@ -799,11 +834,10 @@ QuiverSocialProvider.prototype.selfDescriptionChanged_ = function() {
   this.changeRoster(/** @type {string} */ (this.configuration_.self.id));
   for (var userId in this.clientConnections_) {
     var connections = this.clientConnections_[userId];
-    for (var i = 0; i < connections.length; ++i) {
-      var connection = connections[i];
-      var friend = this.configuration_.friends[userId];
-      var introMsg = this.makeIntroMsg_(friend);
-      this.emitEncrypted_(connection.socket, friend, introMsg);
+    var friend = this.configuration_.friends[userId];
+    var introMsg = this.makeIntroMsg_(friend);
+    if (connections.length > 0) {
+      this.emitEncrypted_(connections, friend, introMsg);
     }
   }
 };
@@ -1068,18 +1102,22 @@ QuiverSocialProvider.prototype.sendMessage = function(to, msg, continuation) {
     continuation(undefined, this.err("SEND_INVALIDDESTINATION"));
     return;
   }
-  // TODO: Only encrypt once, even if there are multiple connections.
+  // TODO: Handle more than one message per millisecond.  Currently, if two
+  // messages are sent in one millisecond, one will be dropped.
   var index = Date.now();
-  this.clientConnections_[userId].forEach(function(connection) {
-    this.emitEncrypted_(connection.socket, friend, {
+  var connections = this.clientConnections_[userId];
+  if (connections.length > 0) {
+    this.emitEncrypted_(connections, friend, {
       cmd: 'msg',
       msg: msg,
       index: index,  // For de-duplication across paths.
       fromClient: this.clientSuffix_,
       toClient: clientSuffix  // null for broadcast
     });
-  }.bind(this));
-  continuation();
+    continuation();
+  } else {
+    continuation(undefined, this.err("OFFLINE"));
+  }
 };
 
 /**
@@ -1103,13 +1141,14 @@ QuiverSocialProvider.prototype.signEncryptMessage_ = function(msg, opt_key) {
 };
 
 /**
- * @param {Socket} socket
+ * @param {!Array<!QuiverSocialProvider.connection_>} connections
  * @param {QuiverSocialProvider.userDesc_} friend
  * @param {*} msg JSON-ifiable message
  * @private
  */
-QuiverSocialProvider.prototype.emitEncrypted_ = function(socket, friend, msg) {
-  if (!socket) {
+QuiverSocialProvider.prototype.emitEncrypted_ = function(connections, friend,
+    msg) {
+  if (!connections || connections.length === 0) {
     this.logError_('BUG: Tried to send on null socket');
     return;
   }
@@ -1121,10 +1160,12 @@ QuiverSocialProvider.prototype.emitEncrypted_ = function(socket, friend, msg) {
 
   this.signEncryptMessage_(msg, friend.pubKey).then(function(cipherData) {
     // cipherData is an ArrayBuffer.  socket.io supports sending ArrayBuffers.
-    socket.emit('emit', {
-      room: friend.id,
-      msg: cipherData
-    });
+    connections.forEach(function(connection) {
+      connection.socket.emit('emit', {
+        room: friend.id,
+        msg: cipherData
+      });
+    }, this);
   }.bind(this)).catch(function(e) {
     this.warn_('emit failed: ' + e);
   }.bind(this));
@@ -1144,6 +1185,7 @@ QuiverSocialProvider.prototype.logout = function(continuation) {
   }
 
   var onClose = function(serverKey, continuation) {
+    this.log_('Deleting server ' + serverKey);
     delete this.connections_[serverKey];
     if (!this.isOnline_()) {
       continuation();
@@ -1152,8 +1194,16 @@ QuiverSocialProvider.prototype.logout = function(continuation) {
 
   for (var serverKey in this.connections_) {
     var conn = this.connections_[serverKey];
-    conn.socket.on("disconnect", onClose.bind(this, serverKey, continuation));
-    conn.socket.close();
+    if (!conn.socket) {
+      continue;
+    }
+    this.unlisten_(conn);
+    if (conn.socket.connected) {
+      conn.socket.once("disconnect", onClose.bind(this, serverKey, continuation));
+      conn.socket.close();
+    } else {
+      onClose(serverKey, continuation);
+    }
   }
 };
 
@@ -1197,6 +1247,13 @@ QuiverSocialProvider.prototype.onEncryptedMessage_ = function(server, msg) {
     return;
   }
 
+  if (!this.connections_[QuiverSocialProvider.serverKey_(server)]) {
+    this.logError_('No such server!');
+    return;
+  }
+
+  // TODO: Memoize decryption to save CPU time for identical messages sent
+  // through different paths.
   this.pgp_.verifyDecrypt(msg.cipherText, msg.key).then(function(plain) {
     var text = textDecoder.decode(plain.data);
     var obj = JSON.parse(text);
@@ -1251,17 +1308,17 @@ QuiverSocialProvider.prototype.onMessage = function(server, msg, fromUserId,
   // TODO: Keep track of which message came through which server
   var serverKey = QuiverSocialProvider.serverKey_(server);
   /** @type {!Object<string, boolean>} */ var gotIntro;
-  var socket = this.connections_[serverKey].socket;
   if (msg.cmd === 'ping') {
+    var connection = this.connections_[serverKey];
     // Only pings are allowed to go unencrypted.
     // Reply to the ping with an encrypted intro msg.
     if (friendDesc) {
       this.addClient_(fromUserId, msg.fromClient);
       var introMsg = this.makeIntroMsg_(friendDesc);
-      this.emitEncrypted_(socket, friendDesc, introMsg);
+      this.emitEncrypted_([connection], friendDesc, introMsg);
       gotIntro = this.clients_[fromUserId][msg.fromClient].gotIntro;
       if (!gotIntro[serverKey]) {
-        this.emitEncrypted_(socket, friendDesc, {
+        this.emitEncrypted_([connection], friendDesc, {
           cmd: 'ping',
           fromClient: this.clientSuffix_,
           toClient: msg.fromClient
@@ -1280,7 +1337,7 @@ QuiverSocialProvider.prototype.onMessage = function(server, msg, fromUserId,
         servers: {},
         nick: null
       };
-      this.emitEncrypted_(socket, sender, {
+      this.emitEncrypted_([connection], sender, {
         cmd: 'ping',
           toClient: msg.fromClient,
           fromClient: this.clientSuffix_,
