@@ -586,10 +586,18 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
   }.bind(this));
 
   this.listen_(connection, "connect_error", function(err) {
-    this.warn_('socketio: connect_error for ' + serverUrl + ', ' + err);
-    socket.close();
-    this.disconnect_(server);
-    reject(err);
+    this.warn_('socketio: connect_error for ' + serverUrl + ', ' + err +
+        ', connected: ' + socket.connected + ', wasConnected: ' + wasConnected);
+    if (wasConnected) {
+      // Try to reconnect once.  If this has another connect_error immediately
+      // we will not retry
+      wasConnected = false;
+      socket.connect();  // TODO: test this
+    } else {
+      socket.close();
+      this.disconnect_(server);
+      reject(err);
+    }
   }.bind(this));
 
   this.listen_(connection, "message", this.onEncryptedMessage_.bind(this, server));
@@ -599,8 +607,10 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
     reject(new Error('Never connected to ' + serverUrl));
   }.bind(this));
 
+  var wasConnected = false;
   var onConnect = function() {
     this.log_('socketio: connect for ' + serverUrl);
+    wasConnected = true;
     socket.emit('join', this.configuration_.self.id);
 
     if (this.finishLogin_) {
