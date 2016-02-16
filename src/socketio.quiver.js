@@ -1263,15 +1263,15 @@ QuiverSocialProvider.prototype.onEncryptedMessage_ = function(server, msg) {
   var bytes = new Uint8Array(msg.cipherText);
   var msgKey = msg.key + ';' + Array.prototype.join.call(bytes, ':');
 
-  /** @type {Promise<!FreedomPgpDecryptResult>} */ var plainText;
+  /** @type {Promise<!FreedomPgpDecryptResult>} */ var plainTextPromise;
   if (this.decryptCache_.has(msgKey)) {
-    plainText = this.decryptCache_.get(msgKey);
+    plainTextPromise = this.decryptCache_.get(msgKey);
   } else {
-    plainText = this.pgp_.verifyDecrypt(msg.cipherText, msg.key);
-    this.decryptCache_.set(msgKey, plainText);
+    plainTextPromise = this.pgp_.verifyDecrypt(msg.cipherText, msg.key);
+    this.decryptCache_.set(msgKey, plainTextPromise);
   }
 
-  plainText.then(function(plain) {
+  plainTextPromise.then(function(plain) {
     var text = textDecoder.decode(plain.data);
     var obj = JSON.parse(text);
     this.pgp_.getFingerprint(msg.key).then(function(fingerprintStruct) {
