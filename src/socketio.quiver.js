@@ -639,12 +639,13 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
     }.bind(this));
   }.bind(this);
 
-  this.connections_[serverKey].ready.then(onConnect).then(function() {
+  if (this.configuration_.self.servers[serverKey]) {
     // Connect to self, in order to be able to send messages to my own other
     // clients.
-    // TODO: Only do this on servers I am advertising?
-    this.connectAsClient_(this.configuration_.self, server);
-  }.bind(this));
+    this.connections_[serverKey].ready.then(onConnect).then(function() {
+      this.connectAsClient_(this.configuration_.self, server);
+    }.bind(this));
+  }
 
   // We were briefly offline, so we have been disconnected from our room, and
   // may have missed any inbound pings.  Re-join, and re-ping to indicate that
