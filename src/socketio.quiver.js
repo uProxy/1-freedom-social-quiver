@@ -16,6 +16,7 @@ if (typeof window !== 'undefined') {
 
 /** @type {SocketIO} */ var io = require('socket.io-client');
 /** @type {FrontDomain} */ var frontdomain = require('frontdomain');
+/** @type {LRUFactory} */ var lru = require('lru-cache');
 
 var textEncoder = new TextEncoder('utf-8');
 var textDecoder = new TextDecoder('utf-8');
@@ -55,6 +56,9 @@ function QuiverSocialProvider(dispatchEvent) {
   this.getPubKey_ = new Promise(function(F, R) {
     this.onPubKey_ = F;
   }.bind(this));
+
+  /** @private {LRU<string, Promise<!FreedomPgpDecryptResult>>} */
+  this.decryptCache_ = lru(25);  // Keep the last 25 messages.
 
   /** @private {!Console} */
   this.logger_ = console;
@@ -802,6 +806,7 @@ QuiverSocialProvider.prototype.inviteUser = function(ignoredUserId, cb) {
     // 16 bytes is the standard for collision avoidance in a UUID.
     this.crypto_.getRandomBytes(16).then(function(buffer) {
       // Convert to base64, but strip '=' because it adds no entropy.
+      // TODO: Fix handling of 0 bytes.  They shouldn't make knockCode shorter.
       var knockCode = btoa(String.fromCharCode.apply(null,
           new Uint8Array(buffer))).replace(/=/g, '');
       this.configuration_.liveKnockCodes.push(knockCode);
@@ -1253,9 +1258,20 @@ QuiverSocialProvider.prototype.onEncryptedMessage_ = function(server, msg) {
     return;
   }
 
-  // TODO: Memoize decryption to save CPU time for identical messages sent
-  // through different paths.
-  this.pgp_.verifyDecrypt(msg.cipherText, msg.key).then(function(plain) {
+  // Memoize decryption.  For security, it's important that msgKey be
+  // non-collidable even if the sender is hostile.
+  var bytes = new Uint8Array(msg.cipherText);
+  var msgKey = msg.key + ';' + Array.prototype.join.call(bytes, ':');
+
+  /** @type {Promise<!FreedomPgpDecryptResult>} */ var plainTextPromise;
+  if (this.decryptCache_.has(msgKey)) {
+    plainTextPromise = this.decryptCache_.get(msgKey);
+  } else {
+    plainTextPromise = this.pgp_.verifyDecrypt(msg.cipherText, msg.key);
+    this.decryptCache_.set(msgKey, plainTextPromise);
+  }
+
+  plainTextPromise.then(function(plain) {
     var text = textDecoder.decode(plain.data);
     var obj = JSON.parse(text);
     this.pgp_.getFingerprint(msg.key).then(function(fingerprintStruct) {

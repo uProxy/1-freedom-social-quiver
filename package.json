@@ -32,6 +32,7 @@
     "grunt-closure-tools": "~0.9.7",
     "freedom": "~0.5.6",
     "karma": "~0.12.17",
+    "lru-cache": "^4.0.0",
     "grunt-karma": "~0.8.3",
     "karma-jasmine": "~0.2.2",
     "karma-chrome-launcher": "~0.1.4",
