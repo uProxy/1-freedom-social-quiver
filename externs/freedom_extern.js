@@ -96,6 +96,14 @@ function FreedomCrypto() {};
  */
 FreedomCrypto.prototype.getRandomBytes = function(numBytes) {}
 
+/**
+ * @typedef {{
+ *   data: !ArrayBuffer,
+ *   signedBy: Array<string>
+ * }}
+ */
+var FreedomPgpDecryptResult;
+
 /** @interface */
 function FreedomPgp() {};
 
@@ -121,7 +129,7 @@ FreedomPgp.prototype.signEncrypt = function(plainText, pubKey) {}
 /**
  * @param {!ArrayBuffer} cipherText
  * @param {?string=} pubKey
- * @return {!Promise<{data: !ArrayBuffer, signedBy: Array<string>}>}
+ * @return {!Promise<!FreedomPgpDecryptResult>}
  */
 FreedomPgp.prototype.verifyDecrypt = function(cipherText, pubKey) {}
 
