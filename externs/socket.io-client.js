@@ -12,6 +12,18 @@ Socket.prototype.on = function(name, listener) {};
 
 /**
  * @param {string} name
+ * @param {Function} listener
+ */
+Socket.prototype.once = function(name, listener) {};
+
+/**
+ * @param {string} name
+ * @param {Function} listener
+ */
+Socket.prototype.removeListener = function(name, listener) {};
+
+/**
+ * @param {string} name
  * @param {*} value
  */
 Socket.prototype.emit = function(name, value) {};
