@@ -587,7 +587,6 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
   };
   this.connections_[serverKey] = connection;
   this.log_('Adding core listeners for: ' + serverKey);
-  this.listen_(connection, "connect", resolve);
 
   this.listen_(connection, "error", function(err) {
     this.warn_('socketio: error for ' + serverUrl + ', ' + err);
@@ -632,6 +631,7 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
     this.log_('socketio: connect for ' + serverUrl);
     connectErrorCount = 0;
     socket.emit('join', this.configuration_.self.id);
+    resolve();
 
     if (this.finishLogin_) {
       this.finishLogin_();
@@ -658,11 +658,12 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
       });
     }.bind(this));
   }.bind(this);
+  this.listen_(connection, "connect", onConnect);
 
   if (this.configuration_.self.servers[serverKey]) {
     // Connect to self, in order to be able to send messages to my own other
     // clients.
-    this.connections_[serverKey].ready.then(onConnect).then(function() {
+    this.connections_[serverKey].ready.then(function() {
       this.connectAsClient_(this.configuration_.self, server);
     }.bind(this));
   }
