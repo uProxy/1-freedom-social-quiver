@@ -100,7 +100,7 @@ QuiverSocialProvider.serverKey_ = function(server) {
 };
 
 /** @const @private {!Array.<QuiverSocialProvider.server_>} */
-QuiverSocialProvider.DEFAULT_SERVERS_ = [{
+QuiverSocialProvider.DEFAULT_SERVERS_ = [/*{
   type: 'socketio',
   domain: 'd1j0v91oi5t6ys.cloudfront.net',
   front: 'a0.awsstatic.com'
@@ -116,7 +116,7 @@ QuiverSocialProvider.DEFAULT_SERVERS_ = [{
   type: 'socketio',
   domain: 'd2cqtpyb8m6x8r.cloudfront.net',
   front: 'cdn.tinymce.com'
-}, {
+}, */{
   type: 'socketio',
   domain: 'd3h805atiromvi.cloudfront.net',
   front: 'assets.tumblr.com'
@@ -585,18 +585,37 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
     this.warn_('socketio: error for ' + serverUrl + ', ' + err);
   }.bind(this));
 
-  var connectErrorCount = 0;
-  var MAX_RETRIES = 6;  // Allows ~30 seconds for server to restart.
+  var reconnectingAfterConnectError = false;
+  var wasConnected = false;
   this.listen_(connection, "connect_error", function(err) {
-    ++connectErrorCount;
-    this.warn_('socketio: connect_error for ' + serverUrl + ', ' + err +
-        ', connectErrorCount: ' + connectErrorCount);
-    // If there is an error connecting to the server (e.g. it is unreachable
-    // or has just been restarted), socketio will attempt to reconnect to that
-    // server every ~5 seconds, indefinitely.  We should stop after MAX_RETRIES,
-    // e.g. so that uProxy can know we are OFFLINE.
-    if (connectErrorCount > MAX_RETRIES) {
-      this.warn_('disconnecting from ' + serverUrl + ' after MAX_RETRIES');
+    this.warn_('socketio: connect_error for ' + serverUrl + ', ' + err);
+    // connect_error can happen if the server fails or restarts unexpectedly.
+    // We handle 3 cases of connect_error:
+    // 1. We were connected but got a connect_error: attempt to reconnect after
+    //    waiting WAIT_MS.
+    // 2. We got a duplicate connect_error while waiting WAIT_MS to reconnect:
+    //    ignore this.
+    // 3. We waiting the WAIT_MS, attempted to reconnect, and got another
+    //    connect_error: disconnect and fail.
+    var WAIT_MS = 20000;
+    if (wasConnected && !reconnectingAfterConnectError) {
+      // Attempt a reconnect in WAIT_MS.
+      this.warn_('attempting reconnect in connect_error for ' + serverUrl);
+      reconnectingAfterConnectError = true;
+      wasConnect = false;
+      setTimeout(function() {
+        this.warn_('socketio: calling connect again for ' + serverUrl);
+        socket.connect();
+        reconnectingAfterConnectError = false;
+        // TODO: does this invoke onConnect?
+      }.bind(this), WAIT_MS);
+    } else if (reconnectingAfterConnectError) {
+      // Currently attempting a reconnect, ignore.
+      this.warn_('ignoring duplicate connect_error for ' + serverUrl);
+    } else {
+      // Was not successfully connected, fail.
+      this.warn_('NOT attempting reconnect in connect_error for ' + serverUrl);
+      ++connectErrorCount;
       socket.close();
       this.disconnect_(server);
       reject(err);
@@ -611,8 +630,10 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
   }.bind(this));
 
   var onConnect = function() {
+    this.warn_('socketio: connect for ' + serverUrl);  // TODO: remove
     this.log_('socketio: connect for ' + serverUrl);
-    connectErrorCount = 0;
+    reconnectingAfterConnectError = false;
+    wasConnected = true;
     socket.emit('join', this.configuration_.self.id);
 
     if (this.finishLogin_) {
