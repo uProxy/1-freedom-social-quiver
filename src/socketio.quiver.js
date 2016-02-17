@@ -693,6 +693,7 @@ QuiverSocialProvider.prototype.cleanupServer_ = function(serverKey) {
     this.warn_('cleanupServer_ called for unknown server ' + JSON.stringify(server));
     return;
   }
+  this.log_('cleanupServer_ for ' + serverKey);
   // Remove server from friend in this.clientConnections_
   connection.friends.forEach(function(userId) {
     var connections = this.clientConnections_[userId];
@@ -707,7 +708,7 @@ QuiverSocialProvider.prototype.cleanupServer_ = function(serverKey) {
     }
     connections.splice(index);
   }, this);
-  this.log_('cleanupServer_ deleting: ' + serverKey);
+  this.unlisten_(connection);
   delete this.connections_[serverKey];
 };
 
@@ -1213,7 +1214,6 @@ QuiverSocialProvider.prototype.logout = function(continuation) {
 
   for (var serverKey in this.connections_) {
     var conn = this.connections_[serverKey];
-    this.unlisten_(conn);
     if (conn.socket.connected) {
       conn.socket.close();
     }
