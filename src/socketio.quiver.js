@@ -589,7 +589,7 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
     this.warn_('socketio: error for ' + serverUrl + ', ' + err);
   }.bind(this));
 
-  var onDisconnect = function() {
+  var onClose = function() {
     this.cleanupServer_(serverKey);
     if (!this.isOnline_() && !this.finishLogin_) {
       // Only logout if we are not in the middle of login (i.e.
@@ -612,7 +612,7 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
     if (connectErrorCount > MAX_RETRIES) {
       this.warn_('disconnecting from ' + serverUrl + ' after MAX_RETRIES');
       socket.close();
-      onDisconnect();
+      onClose();
       reject(err);
     }
   }.bind(this));
@@ -620,7 +620,7 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
   this.listen_(connection, "message", this.onEncryptedMessage_.bind(this, server));
   this.listen_(connection, "reconnect_failed", function(msg) {
     this.warn_('socketio: reconnect_failed for ' + serverUrl + ', ' + msg);
-    onDisconnect();
+    onClose();
     reject(new Error('Never connected to ' + serverUrl));
   }.bind(this));
 
@@ -675,7 +675,7 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
 
   this.listen_(connection, "disconnect", function() {
     // This may be emitted when the user logs out of Quiver, in that case
-    // it is not an error.  We should not call onDisconnect here as we will
+    // it is not an error.  We should not call onClose here as we will
     // be attempting to reconnect.
     this.warn_('socketio: disconnect for ' + serverUrl);
   }.bind(this));
