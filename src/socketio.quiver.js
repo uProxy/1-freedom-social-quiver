@@ -589,11 +589,22 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
     this.warn_('socketio: error for ' + serverUrl + ', ' + err);
   }.bind(this));
 
+  var connectErrorCount = 0;
+  var MAX_RETRIES = 6;  // Allows ~30 seconds for server to restart.
   this.listen_(connection, "connect_error", function(err) {
-    this.warn_('socketio: connect_error for ' + serverUrl + ', ' + err);
-    socket.close();
-    this.disconnect_(server);
-    reject(err);
+    ++connectErrorCount;
+    this.warn_('socketio: connect_error for ' + serverUrl + ', ' + err +
+        ', connectErrorCount: ' + connectErrorCount);
+    // If there is an error connecting to the server (e.g. it is unreachable
+    // or has just been restarted), socketio will attempt to reconnect to that
+    // server every ~5 seconds, indefinitely.  We should stop after MAX_RETRIES,
+    // e.g. so that uProxy can know we are OFFLINE.
+    if (connectErrorCount > MAX_RETRIES) {
+      this.warn_('disconnecting from ' + serverUrl + ' after MAX_RETRIES');
+      socket.close();
+      this.disconnect_(server);
+      reject(err);
+    }
   }.bind(this));
 
   this.listen_(connection, "message", this.onEncryptedMessage_.bind(this, server));
@@ -605,6 +616,7 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
 
   var onConnect = function() {
     this.log_('socketio: connect for ' + serverUrl);
+    connectErrorCount = 0;
     socket.emit('join', this.configuration_.self.id);
 
     if (this.finishLogin_) {
