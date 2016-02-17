@@ -39,6 +39,7 @@ var textDecoder = new TextDecoder('utf-8');
  * @constructor
  * @param {function(string, Object=)} dispatchEvent callback to signal events
  * @implements {SocialProviderInterface}
+ * @struct
  */
 function QuiverSocialProvider(dispatchEvent) {
   this.dispatchEvent = dispatchEvent;
@@ -59,6 +60,9 @@ function QuiverSocialProvider(dispatchEvent) {
 
   /** @private {LRU<string, Promise<!FreedomPgpDecryptResult>>} */
   this.decryptCache_ = lru(25);  // Keep the last 25 messages.
+
+  /** @private {LRU<string, Promise<!ArrayBuffer>>} */
+  this.encryptCache_ = lru(25);  // Keep the last 25 messages.
 
   /** @private {!Console} */
   this.logger_ = console;
@@ -1139,6 +1143,7 @@ QuiverSocialProvider.prototype.sendMessage = function(to, msg, continuation) {
 };
 
 /**
+ * @param {Object} msg The object to send.
  * @param {?string=} opt_key The recipient's public key.  Omit to sign only.
  * @return {!Promise<!Object>} The returned object is JSON plus arraybuffers.
  * @private
@@ -1148,8 +1153,22 @@ QuiverSocialProvider.prototype.signEncryptMessage_ = function(msg, opt_key) {
     msg = null;
   }
   var msgString = JSON.stringify(msg);
-  var msgBuffer = textEncoder.encode(msgString).buffer;
-  return this.pgp_.signEncrypt(msgBuffer, opt_key).then(function(cipherData) {
+
+  // Memoize encryption.  This removes the unpredictability of PGP encryption,
+  // and potentially leaks metadata about the number of friends (if the cache
+  // fills) but we are not relying on these features.
+  var msgKey = msgString + ';' + (opt_key || '');
+
+  /** @type {Promise<!ArrayBuffer>} */ var cipherDataPromise;
+  if (this.encryptCache_.has(msgKey)) {
+    cipherDataPromise = this.encryptCache_.get(msgKey);
+  } else {
+    var msgBuffer = textEncoder.encode(msgString).buffer;
+    cipherDataPromise = this.pgp_.signEncrypt(msgBuffer, opt_key);
+    this.encryptCache_.set(msgKey, cipherDataPromise);
+  }
+
+  return cipherDataPromise.then(function(cipherData) {
     // cipherData is an ArrayBuffer.  socket.io supports sending ArrayBuffers.
     return {
       key: this.configuration_.self.pubKey,
@@ -1161,7 +1180,7 @@ QuiverSocialProvider.prototype.signEncryptMessage_ = function(msg, opt_key) {
 /**
  * @param {!Array<!QuiverSocialProvider.connection_>} connections
  * @param {QuiverSocialProvider.userDesc_} friend
- * @param {*} msg JSON-ifiable message
+ * @param {Object} msg JSON-ifiable message
  * @private
  */
 QuiverSocialProvider.prototype.emitEncrypted_ = function(connections, friend,
