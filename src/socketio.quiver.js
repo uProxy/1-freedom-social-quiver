@@ -1204,14 +1204,6 @@ QuiverSocialProvider.prototype.emitEncrypted_ = function(connections, friend,
  * @override
  */
 QuiverSocialProvider.prototype.logout = function(continuation) {
-  this.dispatchEvent('onClientState', {
-    userId: this.configuration_.self.id,
-    clientId: this.configuration_.self.id + '#' + this.clientSuffix_,
-    status: 'OFFLINE',
-    lastUpdated: Date.now(),
-    lastSeen: Date.now()
-  });
-
   for (var serverKey in this.connections_) {
     var conn = this.connections_[serverKey];
     if (conn.socket.connected) {
@@ -1219,6 +1211,8 @@ QuiverSocialProvider.prototype.logout = function(continuation) {
     }
     this.cleanupServer_(serverKey);
   }
+  this.dispatchEvent('onClientState',
+      this.makeClientState_(this.configuration_.self.id, this.clientSuffix_));
 };
 
 /**
