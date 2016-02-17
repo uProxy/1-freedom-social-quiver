@@ -1,7 +1,7 @@
 {
   "name": "freedom-social-quiver",
   "description": "Multi-server Social Provider",
-  "version": "0.0.13",
+  "version": "0.1.0",
   "homepage": "",
   "bugs": {
     "url": "http://github.com/uProxy/uproxy/issues"
@@ -18,7 +18,7 @@
     "debug": "0.7.4",
     "freedom-xhr": "^0.0.9",
     "frontdomain": "^0.0.0",
-    "parseuri": "^0.0.4",
+    "lru-cache": "^4.0.0",
     "socket.io-client": "^1.2"
   },
   "devDependencies": {
@@ -32,7 +32,6 @@
     "grunt-closure-tools": "~0.9.7",
     "freedom": "~0.5.6",
     "karma": "~0.12.17",
-    "lru-cache": "^4.0.0",
     "grunt-karma": "~0.8.3",
     "karma-jasmine": "~0.2.2",
     "karma-chrome-launcher": "~0.1.4",
