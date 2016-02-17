@@ -593,6 +593,16 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
     this.warn_('socketio: error for ' + serverUrl + ', ' + err);
   }.bind(this));
 
+  var onClose = function() {
+    this.cleanupServer_(serverKey);
+    if (!this.isOnline_() && !this.finishLogin_) {
+      // Only logout if we are not in the middle of login (i.e.
+      // if finishLogin_ does not still exist).
+      this.warn_('Got final disconnect, logging out');
+      this.logout(function() {});
+    }
+  }.bind(this);
+
   var connectErrorCount = 0;
   var MAX_RETRIES = 6;  // Allows ~30 seconds for server to restart.
   this.listen_(connection, "connect_error", function(err) {
@@ -606,7 +616,7 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
     if (connectErrorCount > MAX_RETRIES) {
       this.warn_('disconnecting from ' + serverUrl + ' after MAX_RETRIES');
       socket.close();
-      this.disconnect_(server);
+      onClose();
       reject(err);
     }
   }.bind(this));
@@ -614,7 +624,7 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
   this.listen_(connection, "message", this.onEncryptedMessage_.bind(this, server));
   this.listen_(connection, "reconnect_failed", function(msg) {
     this.warn_('socketio: reconnect_failed for ' + serverUrl + ', ' + msg);
-    this.disconnect_(server);
+    onClose();
     reject(new Error('Never connected to ' + serverUrl));
   }.bind(this));
 
@@ -669,7 +679,8 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
 
   this.listen_(connection, "disconnect", function() {
     // This may be emitted when the user logs out of Quiver, in that case
-    // it is not an error.
+    // it is not an error.  We should not call onClose here as we will
+    // be attempting to reconnect.
     this.warn_('socketio: disconnect for ' + serverUrl);
   }.bind(this));
 
@@ -677,36 +688,32 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
 };
 
 /**
- * @param {!QuiverSocialProvider.server_} server
+ * @param {!string} serverKey
  * @private
  */
-QuiverSocialProvider.prototype.disconnect_ = function(server) {
-  var serverKey = QuiverSocialProvider.serverKey_(server);
+QuiverSocialProvider.prototype.cleanupServer_ = function(serverKey) {
   var connection = this.connections_[serverKey];
   if (!connection) {
-    this.warn_('Disconnect called for unknown server ' + JSON.stringify(server));
+    this.warn_('cleanupServer_ called for unknown server ' + JSON.stringify(server));
     return;
   }
+  this.log_('cleanupServer_ for ' + serverKey);
+  // Remove server from friend in this.clientConnections_
   connection.friends.forEach(function(userId) {
     var connections = this.clientConnections_[userId];
     if (!connections) {
       this.warn_('Can\'t find user ' + userId);
       return;
     }
-
     var index = connections.indexOf(connection);
     if (index === -1) {
       this.warn_('Can\'t find server for user ' + userId);
       return;
     }
-
     connections.splice(index);
   }, this);
-  this.log_('Deleting on disconnect: ' + serverKey);
+  this.unlisten_(connection);
   delete this.connections_[serverKey];
-  if (!this.isOnline_()) {
-    this.sendAllRosterChanged_();
-  }
 };
 
 /**
@@ -1216,32 +1223,15 @@ QuiverSocialProvider.prototype.emitEncrypted_ = function(connections, friend,
  * @override
  */
 QuiverSocialProvider.prototype.logout = function(continuation) {
-  if (!this.isOnline_()) { // We may not have been logged in
-    continuation(undefined, this.err("OFFLINE"));
-    return;
-  }
-
-  var onClose = function(serverKey, continuation) {
-    this.log_('Deleting server ' + serverKey);
-    delete this.connections_[serverKey];
-    if (!this.isOnline_()) {
-      continuation();
-    }
-  };
-
   for (var serverKey in this.connections_) {
     var conn = this.connections_[serverKey];
-    if (!conn.socket) {
-      continue;
-    }
-    this.unlisten_(conn);
     if (conn.socket.connected) {
-      conn.socket.once("disconnect", onClose.bind(this, serverKey, continuation));
       conn.socket.close();
-    } else {
-      onClose(serverKey, continuation);
     }
+    this.cleanupServer_(serverKey);
   }
+  this.dispatchEvent('onClientState',
+      this.makeClientState_(this.configuration_.self.id, this.clientSuffix_));
 };
 
 /**
