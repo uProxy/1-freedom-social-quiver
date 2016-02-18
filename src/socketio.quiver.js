@@ -213,10 +213,9 @@ QuiverSocialProvider.makeUserId_ = function(fp) {
  */
 QuiverSocialProvider.shuffle_ = function(list, opt_sampleSize) {
   var size = opt_sampleSize || list.length;
-  return list.slice(0, 2);
-  // var tagged = list.map(function(x) { return [Math.random(), x]; });
-  // tagged.sort(function(a, b) { return a[0] - b[0]; });
-  // return tagged.slice(0, size).map(function(x) { return x[1]; });
+  var tagged = list.map(function(x) { return [Math.random(), x]; });
+  tagged.sort(function(a, b) { return a[0] - b[0]; });
+  return tagged.slice(0, size).map(function(x) { return x[1]; });
 };
 
 /** @return {!Promise<!QuiverSocialProvider.configuration_>} */
