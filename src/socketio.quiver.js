@@ -603,17 +603,17 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
   }.bind(this);
 
   var connectErrorCount = 0;
-  var MAX_RETRIES = 6;  // Allows ~30 seconds for server to restart.
   this.listen_(connection, "connect_error", function(err) {
     ++connectErrorCount;
     this.warn_('socketio: connect_error for ' + serverUrl + ', ' + err +
         ', connectErrorCount: ' + connectErrorCount);
     // If there is an error connecting to the server (e.g. it is unreachable
     // or has just been restarted), socketio will attempt to reconnect to that
-    // server every ~5 seconds, indefinitely.  We should stop after MAX_RETRIES,
-    // e.g. so that uProxy can know we are OFFLINE.
-    if (connectErrorCount > MAX_RETRIES) {
-      this.warn_('disconnecting from ' + serverUrl + ' after MAX_RETRIES');
+    // server every ~5 seconds, indefinitely.  We should stop after the max
+    // retries, e.g. so that uProxy can know we are OFFLINE.
+    var maxRetries = this.finishLogin_ ? 2 : 6;
+    if (connectErrorCount > maxRetries) {
+      this.warn_('disconnecting from ' + serverUrl + ' after max retries');
       socket.close();
       onClose();
       reject(err);
@@ -1056,6 +1056,14 @@ QuiverSocialProvider.prototype.makeClientState_ = function(userId, clientSuffix,
     isOnline = this.clientConnections_[userId].length > 0 &&
         !!this.clients_[userId] && !!this.clients_[userId][clientSuffix] &&
         !QuiverSocialProvider.isEmpty_(this.clients_[userId][clientSuffix].gotIntro);
+    if (!isOnline) {
+      this.log_('makeClientState_ OFFLINE for ' + userId +
+          ', opt_forceOnline: ' + opt_forceOnline +
+          ', this.clientConnections_[userId].length: ' + this.clientConnections_[userId].length +
+          ', !!this.clients_[userId]: ' + !!this.clients_[userId] +
+          ', !!this.clients_[userId][clientSuffix]: ' + !!this.clients_[userId][clientSuffix] +
+          ', !QuiverSocialProvider.isEmpty_(this.clients_[userId][clientSuffix].gotIntro: ' + !QuiverSocialProvider.isEmpty_(this.clients_[userId][clientSuffix].gotIntro));
+    }
   }
   isOnline = opt_forceOnline || isOnline;
   return {
@@ -1332,6 +1340,8 @@ QuiverSocialProvider.prototype.onMessage = function(server, msg, fromUserId,
   if (msg.toClient && msg.toClient !== this.clientSuffix_) {
     return;  // Ignore message to another client.
   }
+
+  this.log_('received message from ' + fromUserId + ', cmd: ' + msg.cmd);
 
   // Update the sender's public key.  This should only happen if the key is
   // missing, which happens after accepting an invite.
