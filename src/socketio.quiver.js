@@ -602,16 +602,6 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
     }
   }.bind(this);
 
-  var getMaxRetries = function() {
-    if (this.finishLogin_) {
-      // Still not connected to any servers - make fewer attempts so that
-      // we can quickly move onto other servers.
-      return 2;
-    } else {
-      return 6;
-    }
-  }.bind(this);
-
   var connectErrorCount = 0;
   this.listen_(connection, "connect_error", function(err) {
     ++connectErrorCount;
@@ -621,7 +611,8 @@ QuiverSocialProvider.prototype.connect_ = function(server) {
     // or has just been restarted), socketio will attempt to reconnect to that
     // server every ~5 seconds, indefinitely.  We should stop after the max
     // retries, e.g. so that uProxy can know we are OFFLINE.
-    if (connectErrorCount > getMaxRetries()) {
+    var maxRetries = this.finishLogin_ ? 2 : 6;
+    if (connectErrorCount > maxRetries) {
       this.warn_('disconnecting from ' + serverUrl + ' after max retries');
       socket.close();
       onClose();
