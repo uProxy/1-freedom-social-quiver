@@ -250,22 +250,26 @@ QuiverSocialProvider.prototype.makeDefaultConfiguration_ = function() {
  */
 QuiverSocialProvider.prototype.syncConfiguration_ = function() {
   if (this.configuration_) {
-    return this.storage.set('config', JSON.stringify(this.configuration_));
-  }
-  return new Promise(function(F, R) {
-    this.storage.get('config').then(function(result) {
-      if (result) {
-        this.configuration_ = /** @type {QuiverSocialProvider.configuration_} */ (JSON.parse(result));
-        return F();
-      } else if (!this.configuration_) {
-        this.makeDefaultConfiguration_().then(function(config) {
-          if (!this.configuration_) {
-            this.configuration_ = config;
-          }
-          return this.syncConfiguration_().then(F);
-        }.bind(this));
-      }
+    // Write configuration_ to storage, don't need to wait for this to complete.
+    this.storage.set('config', JSON.stringify(this.configuration_))
+    .catch(function(e) {
+      this.logError_('Error writing to storage ' + e);
     }.bind(this));
+    return Promise.resolve();
+  }
+  return this.storage.get('config').then(function(result) {
+    if (result) {
+      this.configuration_ = /** @type {QuiverSocialProvider.configuration_} */ (JSON.parse(result));
+      return;  // Done with syncConfiguration_
+    } else if (!this.configuration_) {
+      return this.makeDefaultConfiguration_().then(function(config) {
+        if (!this.configuration_) {
+          this.configuration_ = config;
+        }
+        // Now that this.configuration_ is set, this just writes it to storage.
+        return this.syncConfiguration_();
+      }.bind(this));
+    }
   }.bind(this));
 };
 
