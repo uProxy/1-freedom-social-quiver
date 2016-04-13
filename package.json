@@ -1,7 +1,7 @@
 {
   "name": "freedom-social-quiver",
   "description": "Multi-server Social Provider",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "homepage": "",
   "bugs": {
     "url": "http://github.com/uProxy/uproxy/issues"
@@ -16,7 +16,7 @@
   "main": "Gruntfile.js",
   "dependencies": {
     "debug": "0.7.4",
-    "freedom-xhr": "^0.0.9",
+    "freedom-xhr": "^0.0.11",
     "frontdomain": "^0.0.0",
     "lru-cache": "^4.0.0",
     "socket.io-client": "^1.2"
