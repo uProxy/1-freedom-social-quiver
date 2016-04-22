@@ -8,7 +8,7 @@
 var xhr = navigator.userAgent.indexOf('Firefox') >= 0 ?
    freedomXhr.corexhr : freedomXhr.coretcpsocket;
 /* jshint ignore:start */
-XMLHttpRequest = xhr;
+var XMLHttpRequest = xhr;
 /* jshint ignore:end */
 if (typeof window !== 'undefined') {
   window.XMLHttpRequest = xhr;
@@ -216,6 +216,22 @@ QuiverSocialProvider.shuffle_ = function(list, opt_sampleSize) {
   var tagged = list.map(function(x) { return [Math.random(), x]; });
   tagged.sort(function(a, b) { return a[0] - b[0]; });
   return tagged.slice(0, size).map(function(x) { return x[1]; });
+};
+
+/**
+ * Work around a bug in Socket.IO's has-binary package.  has-binary uses
+ * "obj instanceof ArrayBuffer" to check if something is an ArrayBuffer, but
+ * this fails when freedom runs in iframe mode because obj instanceof
+ * window.top.ArrayBuffer, not window.ArrayBuffer.
+ * @param {!ArrayBuffer} a
+ * @return {!ArrayBuffer} A copy of |a|, made with this scope's ArrayBuffer
+ *     constructor.
+ * @private
+ */
+QuiverSocialProvider.copyArrayBuffer_ = function(a) {
+  var b = new Uint8Array(a.byteLength);
+  b.set(new Uint8Array(a));
+  return b.buffer;
 };
 
 /** @return {!Promise<!QuiverSocialProvider.configuration_>} */
@@ -1184,7 +1200,7 @@ QuiverSocialProvider.prototype.signEncryptMessage_ = function(msg, opt_key) {
     // cipherData is an ArrayBuffer.  socket.io supports sending ArrayBuffers.
     return {
       key: this.configuration_.self.pubKey,
-      cipherText: cipherData
+      cipherText: QuiverSocialProvider.copyArrayBuffer_(cipherData)
     };
   }.bind(this));
 };
