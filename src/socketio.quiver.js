@@ -115,7 +115,7 @@ QuiverSocialProvider.DEFAULT_SERVERS_ = [{
 }, {
   type: 'socketio',
   domain: 'dzgea1sj9ik08.cloudfront.net',
-  front: 'sdk.amazonaws.com'
+  front: 'js.arcgis.com'
 }, {
   type: 'socketio',
   domain: 'd2oi2yhmhpjpt7.cloudfront.net',
@@ -123,7 +123,7 @@ QuiverSocialProvider.DEFAULT_SERVERS_ = [{
 }, {
   type: 'socketio',
   domain: 'd2cqtpyb8m6x8r.cloudfront.net',
-  front: 'cdn.tinymce.com'
+  front: 'cdn.ckeditor.com'
 }, {
   type: 'socketio',
   domain: 'd3h805atiromvi.cloudfront.net',
@@ -131,7 +131,7 @@ QuiverSocialProvider.DEFAULT_SERVERS_ = [{
 }, {
   type: 'socketio',
   domain: 'd2yp1zilrgqkqt.cloudfront.net',
-  front: 'www.splunk.com'
+  front: 'cdn.livefyre.com'
 }];
 
 /**
@@ -966,6 +966,56 @@ QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, pubKey,
   return this.syncConfiguration_().then(function() {
     // TODO: Connect to all servers.
     return this.connectAsClient_(friendDesc, servers[0]).ready;
+  }.bind(this)).catch(function(err) {
+    // The connection to the invitation server has failed.  This could be
+    // because the front domain is malfunctioning.  Try again with one of the
+    // default front domains.  This last-ditch effort is worthwhile because
+    // (1) invitations only contain a single server, so the front domain is a
+    // single point of failure, and (2) there is a known related bug, #2619.
+    var server = servers[0];
+    if (!server.front) {
+      // This isn't a fronted server, so there's nothing to retry.
+      throw err;
+    }
+    var domainComponents = server.domain.split('.');
+    if (domainComponents.length < 3) {
+      // For very short domains, we don't know how to identify which CDN they
+      // use.
+      throw err;
+    }
+    var cloudDomain = domainComponents.slice(1).join('.');
+    var alternateFront = null;
+    // Find the first front domain for this cloud in the default set
+    for (var i = 0; i < QuiverSocialProvider.DEFAULT_SERVERS_.length; ++i) {
+      var defaultServer = QuiverSocialProvider.DEFAULT_SERVERS_[i];
+      if (defaultServer.domain.endsWith(cloudDomain) &&
+          defaultServer.type === server.type &&
+          defaultServer.front) {
+        alternateFront = defaultServer.front;
+        break;
+      }
+    }
+    if (!alternateFront) {
+      // We didn't find any default server on the same cloud, so we don't know
+      // of any alternate front domain.
+      throw err;
+    }
+    if (alternateFront === server.front) {
+      // The front we found was the same one we started with.  This will happen
+      // whenever the connection failure is due to a non-front-related network
+      // problem.  The deterministic ordering of DEFAULT_SERVERS, combined with
+      // this check, avoids an unbounded retry loop.
+      throw err;
+    }
+    /* QuiverSocialProvider.Server_ */ var serverWithNewFront = {
+      type: server.type,
+      domain: server.domain,
+      front: alternateFront
+    };
+    // This will append the modified server to the friend's configuration, sync
+    // it to disk, and try to connect to it.
+    return this.addFriend_([serverWithNewFront], userId, pubKey, knockCodes,
+        nick);
   }.bind(this));
 };
 
