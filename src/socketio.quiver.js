@@ -115,7 +115,7 @@ QuiverSocialProvider.DEFAULT_SERVERS_ = [{
 }, {
   type: 'socketio',
   domain: 'dzgea1sj9ik08.cloudfront.net',
-  front: 'sdk.amazonaws.com'
+  front: 'js.arcgis.com'
 }, {
   type: 'socketio',
   domain: 'd2oi2yhmhpjpt7.cloudfront.net',
@@ -123,7 +123,7 @@ QuiverSocialProvider.DEFAULT_SERVERS_ = [{
 }, {
   type: 'socketio',
   domain: 'd2cqtpyb8m6x8r.cloudfront.net',
-  front: 'cdn.tinymce.com'
+  front: 'cdn.ckeditor.com'
 }, {
   type: 'socketio',
   domain: 'd3h805atiromvi.cloudfront.net',
@@ -131,7 +131,7 @@ QuiverSocialProvider.DEFAULT_SERVERS_ = [{
 }, {
   type: 'socketio',
   domain: 'd2yp1zilrgqkqt.cloudfront.net',
-  front: 'www.splunk.com'
+  front: 'cdn.livefyre.com'
 }];
 
 /**
@@ -966,6 +966,71 @@ QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, pubKey,
   return this.syncConfiguration_().then(function() {
     // TODO: Connect to all servers.
     return this.connectAsClient_(friendDesc, servers[0]).ready;
+  }.bind(this)).catch(function(err) {
+    // The connection to the invitation server has failed.  This could be
+    // because the front domain is malfunctioning.  Try again with one of the
+    // default front domains.  This last-ditch effort is worthwhile because
+    // (1) invitations only contain a single server, so the front domain is a
+    // single point of failure, and (2) there is a known related bug, #2619.
+    // In the future, we may want to generalize this approach to include all
+    // connection retries, not only when processing invitations.
+    var server = servers[0];
+    if (!server.front) {
+      // This isn't a fronted server, so there's nothing to retry.
+      throw err;
+    }
+    var domainComponents = server.domain.split('.');
+    if (domainComponents.length < 3) {
+      // For very short domains, we don't know how to identify which CDN they
+      // use.
+      throw err;
+    }
+    var cloudDomain = domainComponents.slice(1).join('.');
+    var alternateFront = null;
+    // Find the first front domain for this cloud in the default set.
+    // For this algorithm to work well, the first default server listed for each
+    // cloud domain should include the front domain that we think will be most
+    // reliable.
+    for (var i = 0; i < QuiverSocialProvider.DEFAULT_SERVERS_.length; ++i) {
+      var defaultServer = QuiverSocialProvider.DEFAULT_SERVERS_[i];
+      if (defaultServer.domain.endsWith(cloudDomain) &&
+          defaultServer.type === server.type &&
+          defaultServer.front) {
+        alternateFront = defaultServer.front;
+        break;
+      }
+    }
+    if (!alternateFront) {
+      // We didn't find any default server on the same cloud, so we don't know
+      // of any alternate front domain.
+      throw err;
+    }
+    if (alternateFront === server.front) {
+      // To get to this point, something like the following must happen:
+      // 1. The user received an invite which failed.
+      // 2. This function retried the server with an alternate front domain
+      // (e.g. a0.awsstatic.com).
+      // 3. The retry also failed.  The loop selected a0.awsstatic.com as the
+      // alternateFront again, so this alternateFront === server.front check
+      // was hit. Given that we expect a0.awsstatic.com should always work,
+      // this indicates that the connection failed for some other reason
+      // (e.g. network disconnection, actual server failure).
+      //
+      // At this point we rethrow the error to admit defeat and prevent an
+      // infinite retry loop.
+      throw err;
+      // CONSIDER: Retrying with each of the possible front domains, keeping
+      // track of the ones tried already to avoid infinite recursion.
+    }
+    /* QuiverSocialProvider.Server_ */ var serverWithNewFront = {
+      type: server.type,
+      domain: server.domain,
+      front: alternateFront
+    };
+    // This will append the modified server to the friend's configuration, sync
+    // it to disk, and try to connect to it.
+    return this.addFriend_([serverWithNewFront], userId, pubKey, knockCodes,
+        nick);
   }.bind(this));
 };
 
