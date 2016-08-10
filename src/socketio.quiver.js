@@ -972,6 +972,8 @@ QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, pubKey,
     // default front domains.  This last-ditch effort is worthwhile because
     // (1) invitations only contain a single server, so the front domain is a
     // single point of failure, and (2) there is a known related bug, #2619.
+    // In the future, we may want to generalize this approach to include all
+    // connection retries, not only when processing invitations.
     var server = servers[0];
     if (!server.front) {
       // This isn't a fronted server, so there's nothing to retry.
@@ -985,7 +987,10 @@ QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, pubKey,
     }
     var cloudDomain = domainComponents.slice(1).join('.');
     var alternateFront = null;
-    // Find the first front domain for this cloud in the default set
+    // Find the first front domain for this cloud in the default set.
+    // For this algorithm to work well, the first default server listed for each
+    // cloud domain should include the front domain that we think will be most
+    // reliable.
     for (var i = 0; i < QuiverSocialProvider.DEFAULT_SERVERS_.length; ++i) {
       var defaultServer = QuiverSocialProvider.DEFAULT_SERVERS_[i];
       if (defaultServer.domain.endsWith(cloudDomain) &&
@@ -1001,11 +1006,21 @@ QuiverSocialProvider.prototype.addFriend_ = function(servers, userId, pubKey,
       throw err;
     }
     if (alternateFront === server.front) {
-      // The front we found was the same one we started with.  This will happen
-      // whenever the connection failure is due to a non-front-related network
-      // problem.  The deterministic ordering of DEFAULT_SERVERS, combined with
-      // this check, avoids an unbounded retry loop.
+      // To get to this point, something like the following must happen:
+      // 1. The user received an invite which failed.
+      // 2. This function retried the server with an alternate front domain
+      // (e.g. a0.awsstatic.com).
+      // 3. The retry also failed.  The loop selected a0.awsstatic.com as the
+      // alternateFront again, so this alternateFront === server.front check
+      // was hit. Given that we expect a0.awsstatic.com should always work,
+      // this indicates that the connection failed for some other reason
+      // (e.g. network disconnection, actual server failure).
+      //
+      // At this point we rethrow the error to admit defeat and prevent an
+      // infinite retry loop.
       throw err;
+      // CONSIDER: Retrying with each of the possible front domains, keeping
+      // track of the ones tried already to avoid infinite recursion.
     }
     /* QuiverSocialProvider.Server_ */ var serverWithNewFront = {
       type: server.type,
